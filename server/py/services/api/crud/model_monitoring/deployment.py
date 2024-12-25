@@ -326,7 +326,8 @@ class MonitoringDeployment:
                 function=function, function_name=function_name
             )
 
-        function.spec.disable_default_http_trigger = True
+        if function_name != mm_constants.MonitoringFunctionNames.APPLICATION_CONTROLLER:
+            function.spec.disable_default_http_trigger = True
 
         return function
 
@@ -344,7 +345,10 @@ class MonitoringDeployment:
         stream_source = mlrun.datastore.sources.KafkaSource(
             brokers=brokers,
             topics=[topic],
-            attributes={"max_workers": stream_args.kafka.num_workers},
+            attributes={
+                "max_workers": stream_args.kafka.num_workers,
+                "worker_allocation_mode": "static",
+            },
         )
         try:
             stream_source.create_topics(
@@ -373,11 +377,16 @@ class MonitoringDeployment:
         function_name: str,
         stream_args: mlrun.config.Config,
     ):
-        access_key = self.model_monitoring_access_key
-        kwargs = {"access_key": self.model_monitoring_access_key}
+        access_key = (
+            self.model_monitoring_access_key
+            if function_name
+               != mm_constants.MonitoringFunctionNames.APPLICATION_CONTROLLER
+            else mlrun.mlconf.get_v3io_access_key()
+        )
+        kwargs = {"access_key": access_key}
         if mlrun.mlconf.is_explicit_ack_enabled():
             kwargs["explicit_ack_mode"] = "explicitOnly"
-            kwargs["worker_allocation_mode"] = "static"
+        kwargs["worker_allocation_mode"] = "static"
         kwargs["max_workers"] = stream_args.v3io.num_workers
         services.api.api.endpoints.nuclio.create_model_monitoring_stream(
             project=self.project,

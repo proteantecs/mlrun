@@ -40,7 +40,6 @@ import mlrun.model_monitoring.writer
 import mlrun.serving.states
 from mlrun import feature_store as fstore
 from mlrun.config import config
-from mlrun.model_monitoring import get_stream_path
 from mlrun.model_monitoring.writer import ModelMonitoringWriter
 from mlrun.platforms.iguazio import split_path
 from mlrun.utils import logger
@@ -409,10 +408,10 @@ class MonitoringDeployment:
             project=self.project, secret_provider=self._secret_provider
         )
 
-        controller_stream_uri = get_stream_path(
+        controller_stream_uri = mlrun.model_monitoring.get_stream_path(
             project=self.project,
             function_name=mm_constants.MonitoringFunctionNames.APPLICATION_CONTROLLER,
-            secret_provider=secret_provider,
+            secret_provider=self._secret_provider,
         )
 
         # Create monitoring serving graph

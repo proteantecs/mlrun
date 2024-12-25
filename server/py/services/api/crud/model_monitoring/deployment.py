@@ -380,7 +380,7 @@ class MonitoringDeployment:
         access_key = (
             self.model_monitoring_access_key
             if function_name
-               != mm_constants.MonitoringFunctionNames.APPLICATION_CONTROLLER
+            != mm_constants.MonitoringFunctionNames.APPLICATION_CONTROLLER
             else mlrun.mlconf.get_v3io_access_key()
         )
         kwargs = {"access_key": access_key}

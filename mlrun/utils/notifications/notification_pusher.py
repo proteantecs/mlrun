@@ -139,15 +139,25 @@ class NotificationPusher(_NotificationPusherBase):
                     error=mlrun.errors.err_to_str(exc),
                 )
 
-    def _process_notification(self, notification, run):
-        notification.status = run.status.notifications.get(notification.name, {}).get(
+    def _process_notification(self, notification_object, run):
+        notification_object.status = run.status.notifications.get(
+            notification_object.name, {}
+        ).get(
             "status",
             mlrun.common.schemas.NotificationStatus.PENDING,
         )
-        if self._should_notify(run, notification):
-            self._load_notification(run, notification)
+        if self._should_notify(run, notification_object):
+            notification = self._load_notification(notification_object)
+            if notification.is_async:
+                self._async_notifications.append(
+                    (notification, run, notification_object)
+                )
+            else:
+                self._sync_notifications.append(
+                    (notification, run, notification_object)
+                )
 
-    def push(self):
+    def push(self, sync_push_callback=None, async_push_callback=None):
         """
         Asynchronously push notifications for all runs in the initialized runs list (if they should be pushed).
         When running from a sync environment, the notifications will be pushed asynchronously however the function will
@@ -201,8 +211,9 @@ class NotificationPusher(_NotificationPusherBase):
             notifications_amount=len(self._sync_notifications)
             + len(self._async_notifications),
         )
-
-        self._push(sync_push, async_push)
+        sync_push_callback = sync_push_callback or sync_push
+        async_push_callback = async_push_callback or async_push
+        self._push(sync_push_callback, async_push_callback)
 
     @staticmethod
     def _should_notify(
@@ -241,24 +252,19 @@ class NotificationPusher(_NotificationPusherBase):
         return False
 
     def _load_notification(
-        self, run: mlrun.model.RunObject, notification_object: mlrun.model.Notification
+        self, notification_object: mlrun.model.Notification
     ) -> base.NotificationBase:
         name = notification_object.name
         notification_type = notification_module.NotificationTypes(
             notification_object.kind or notification_module.NotificationTypes.console
         )
         params = {}
-        params.update(notification_object.secret_params)
-        params.update(notification_object.params)
+        params.update(notification_object.secret_params or {})
+        params.update(notification_object.params or {})
         default_params = self._default_params.get(notification_type.value, {})
         notification = notification_type.get_notification()(
             name, params, default_params
         )
-        if notification.is_async:
-            self._async_notifications.append((notification, run, notification_object))
-        else:
-            self._sync_notifications.append((notification, run, notification_object))
-
         logger.debug(
             "Loaded notification", notification=name, type=notification_type.value
         )
@@ -496,6 +502,14 @@ class CustomNotificationPusher(_NotificationPusherBase):
         notification_type: str,
         params: typing.Optional[dict[str, str]] = None,
     ):
+        if notification_type not in [
+            notification_module.NotificationTypes.console,
+            notification_module.NotificationTypes.ipython,
+        ]:
+            # We want that only the console and ipython notifications will be notified by the client.
+            # The rest of the notifications will be notified by the BE.
+            return
+
         if notification_type in self._async_notifications:
             self._async_notifications[notification_type].load_notification(params)
         elif notification_type in self._sync_notifications:
@@ -565,25 +579,9 @@ class CustomNotificationPusher(_NotificationPusherBase):
         pipeline_id: typing.Optional[str] = None,
         has_workflow_url: bool = False,
     ):
-        message = f"Workflow started in project {project}"
-        if pipeline_id:
-            message += f" id={pipeline_id}"
-        commit_id = (
-            commit_id or os.environ.get("GITHUB_SHA") or os.environ.get("CI_COMMIT_SHA")
+        html, message = self.generate_start_message(
+            commit_id, has_workflow_url, pipeline_id, project
         )
-        if commit_id:
-            message += f", commit={commit_id}"
-        if has_workflow_url:
-            url = mlrun.utils.helpers.get_workflow_url(project, pipeline_id)
-        else:
-            url = mlrun.utils.helpers.get_ui_url(project)
-        html = ""
-        if url:
-            html = (
-                message
-                + f'<div><a href="{url}" target="_blank">click here to view progress</a></div>'
-            )
-            message = message + f", check progress in {url}"
         self.push(message, "info", custom_html=html)
 
     def push_pipeline_run_results(
@@ -615,6 +613,30 @@ class CustomNotificationPusher(_NotificationPusherBase):
         if state:
             text += f", state={state}"
         self.push(text, "info", runs=runs_list)
+
+    def generate_start_message(
+        self, commit_id=None, has_workflow_url=None, pipeline_id=None, project=None
+    ):
+        message = f"Workflow started in project {project}"
+        if pipeline_id:
+            message += f" id={pipeline_id}"
+        commit_id = (
+            commit_id or os.environ.get("GITHUB_SHA") or os.environ.get("CI_COMMIT_SHA")
+        )
+        if commit_id:
+            message += f", commit={commit_id}"
+        if has_workflow_url:
+            url = mlrun.utils.helpers.get_workflow_url(project, pipeline_id)
+        else:
+            url = mlrun.utils.helpers.get_ui_url(project)
+        html = ""
+        if url:
+            html = (
+                message
+                + f'<div><a href="{url}" target="_blank">click here to view progress</a></div>'
+            )
+            message = message + f", check progress in {url}"
+        return html, message
 
 
 def sanitize_notification(notification_dict: dict):

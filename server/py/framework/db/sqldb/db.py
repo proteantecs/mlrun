@@ -128,6 +128,10 @@ from framework.db.sqldb.models import (
 NULL = None  # Avoid flake8 issuing warnings when comparing in filter
 unversioned_tagged_object_uid_prefix = "unversioned-"
 
+# Max values for 32-bit and 64-bit signed integers
+MAX_INT_32 = 2_147_483_647  # For Integer (4-byte)
+MAX_INT_64 = 9_223_372_036_854_775_807  # For BigInteger (8-byte)
+
 conflict_messages = [
     "(sqlite3.IntegrityError) UNIQUE constraint failed",
     "(pymysql.err.IntegrityError) (1062",
@@ -857,6 +861,7 @@ class SQLDB(DBInterface):
         uid: typing.Optional[str] = None,
         raise_on_not_found: bool = True,
         format_: mlrun.common.formatters.ArtifactFormat = mlrun.common.formatters.ArtifactFormat.full,
+        as_record: bool = False,
     ):
         query = self._query(session, ArtifactV2, key=key, project=project)
         enrich_tag = False
@@ -920,6 +925,8 @@ class SQLDB(DBInterface):
         if enrich_tag:
             self._set_tag_in_artifact_struct(artifact, tag)
 
+        if as_record:
+            return db_artifact
         return mlrun.common.formatters.ArtifactFormat.format_obj(artifact, format_)
 
     def del_artifact(
@@ -1617,20 +1624,21 @@ class SQLDB(DBInterface):
         if producer_id:
             query = query.filter(ArtifactV2.producer_id == producer_id)
 
-        query = query.join(ArtifactV2.Tag, ArtifactV2.Tag.obj_id == ArtifactV2.id)
+        # To get all artifacts, even if they don't have tags
+        query = query.outerjoin(ArtifactV2.Tag, ArtifactV2.Tag.obj_id == ArtifactV2.id)
 
         tuples_filter = []
         for key, tag, iteration, uid in artifact_identifiers:
-            iteration = iteration or 0
-            tag = tag or mlrun.common.constants.RESERVED_TAG_NAME_LATEST
-            base_filter = (
-                (ArtifactV2.key == key)
-                & (ArtifactV2.Tag.name == tag)
-                & (ArtifactV2.iteration == iteration)
-            )
-            # Add UID filter only if UID is not None
+            base_filter = ArtifactV2.key == key
+
+            # Prioritize filtering by UID if provided
             if uid is not None:
                 base_filter = base_filter & (ArtifactV2.uid == uid)
+            else:
+                iteration = iteration or 0
+                base_filter = base_filter & (ArtifactV2.iteration == iteration)
+                if tag is not None:
+                    base_filter = base_filter & (ArtifactV2.Tag.name == tag)
             tuples_filter.append(base_filter)
 
         query = query.filter(or_(*tuples_filter))
@@ -5002,17 +5010,23 @@ class SQLDB(DBInterface):
                     identifiers = ",".join(
                         object_.get_identifier_string() for object_ in objects
                     )
-
-                    mlrun_error = mlrun.errors.MLRunRuntimeError(
-                        f"Failed committing changes to DB. classes={classes} objects={identifiers}"
-                    )
-
                     # check if the error is a conflict error
                     if any([message in str(sql_err) for message in conflict_messages]):
                         mlrun_error = mlrun.errors.MLRunConflictError(
                             f"Conflict - at least one of the objects already exists: {identifiers}"
                         )
-
+                    else:
+                        error = "Failed committing changes to DB"
+                        if "Out of range value for column" in str(sql_err):
+                            column = sql_err.orig.args[1].split("'")[1]
+                            mlrun_error = mlrun.errors.MLRunRuntimeError(
+                                f"{error}, column='{column}' exceeds the allowed range. "
+                                + f"classes={classes} objects={identifiers}"
+                            )
+                        else:
+                            mlrun_error = mlrun.errors.MLRunRuntimeError(
+                                f"{error}. classes={classes} objects={identifiers}"
+                            )
                     # we want to keep the exception stack trace, but we also want the retry mechanism to stop
                     # so, we raise a new indicative exception from the original sql exception (this keeps
                     # the stack trace intact), and then wrap it with a fatal error (which stops the retry mechanism).
@@ -5157,6 +5171,7 @@ class SQLDB(DBInterface):
         latest_only: bool,
         offset: int,
         limit: int,
+        order_by: str,
     ) -> sqlalchemy.orm.query.Query:
         """
         Query model_endpoints from the DB by the given filters.
@@ -5256,6 +5271,12 @@ class SQLDB(DBInterface):
         labels = label_set(labels)
         query = self._add_labels_filter(session, query, ModelEndpoint, labels)
         query = self._paginate_query(query, offset, limit)
+        try:
+            if order_by:
+                query = query.order_by(getattr(ModelEndpoint, order_by).asc())
+        except AttributeError as err:
+            logger.warning("Skipping order by", error=mlrun.errors.err_to_str(err))
+
         return query
 
     @staticmethod
@@ -5834,11 +5855,12 @@ class SQLDB(DBInterface):
     def store_alert(
         self, session, alert: mlrun.common.schemas.AlertConfig
     ) -> mlrun.common.schemas.AlertConfig:
-        alert_record = self._get_alert_record(session, alert.name, alert.project)
+        alert_record, alert_state = self._get_alert_record(
+            session, alert.name, alert.project, with_state=True
+        )
         if not alert_record:
-            return self._create_alert(session, alert)
+            return self.create_alert(session, alert)
         alert_record.full_object = alert.dict()
-        alert_state = self.get_alert_state(session, alert_record.id)
 
         self._delete_alert_notifications(session, alert.name, alert, alert.project)
         self._store_notifications(
@@ -5849,27 +5871,30 @@ class SQLDB(DBInterface):
             alert.project,
         )
 
-        self._upsert(session, [alert_record, alert_state])
-        return self.get_alert_by_id(session, alert_record.id)
+        self._upsert(session, [alert_record])
+        # in case alert service was stopped while storing an alert, ensure that it has a state
+        if not alert_state:
+            self.create_alert_state(session, alert_record.id)
+        return self._transform_alert_config_record_to_schema(alert_record)
 
-    def _create_alert(
-        self, session, alert: mlrun.common.schemas.AlertConfig
+    def create_alert(
+        self,
+        session,
+        alert: mlrun.common.schemas.AlertConfig,
     ) -> mlrun.common.schemas.AlertConfig:
         alert_record = self._transform_alert_config_schema_to_record(alert)
-        self._upsert(session, [alert_record])
-
-        alert_record = self._get_alert_record(
-            session, alert_record.name, alert_record.project
+        alert_id = self._upsert_object_and_flush_to_get_field(
+            session, alert_record, "id"
         )
 
         self._store_notifications(
             session,
             AlertConfig,
             alert.get_raw_notifications(),
-            alert_record.id,
+            alert_id,
             alert.project,
         )
-        self.create_alert_state(session, alert_record)
+        self.create_alert_state(session, alert_id)
 
         return self._transform_alert_config_record_to_schema(alert_record)
 
@@ -5880,19 +5905,46 @@ class SQLDB(DBInterface):
         self, session, project: typing.Optional[typing.Union[str, list[str]]] = None
     ) -> list[mlrun.common.schemas.AlertConfig]:
         query = self._query(session, AlertConfig)
-        query = self._filter_query_by_resource_project(query, AlertConfig, project)
 
-        alerts = list(map(self._transform_alert_config_record_to_schema, query.all()))
-        for alert in alerts:
-            self.enrich_alert(session, alert)
+        # Construct the initial query for AlertConfig and join with AlertState to fetch associated states
+        query = query.outerjoin(
+            AlertState, AlertState.parent_id == AlertConfig.id
+        ).add_entity(AlertState)
+
+        query = self._filter_query_by_resource_project(query, AlertConfig, project)
+        results = query.all()
+
+        # Process each result, transforming and enriching the AlertConfig objects
+        alerts = []
+        for alert_config, alert_state in results:
+            alert = self._transform_alert_config_record_to_schema(alert_config)
+            # Enrich the alert with additional data using AlertState
+            self.enrich_alert(
+                session,
+                alert,
+                state=alert_state,
+            )
+            alerts.append(alert)
         return alerts
 
     def get_alert(
-        self, session, project: str, name: str
-    ) -> mlrun.common.schemas.AlertConfig:
-        return self._transform_alert_config_record_to_schema(
-            self._get_alert_record(session, name, project)
-        )
+        self,
+        session,
+        project: str,
+        name: str,
+        with_state=False,
+    ) -> Optional[
+        Union[
+            mlrun.common.schemas.AlertConfig,
+            tuple[mlrun.common.schemas.AlertConfig, AlertState],
+        ]
+    ]:
+        if not with_state:
+            return self._transform_alert_config_record_to_schema(
+                self._get_alert_record(session, name, project, with_state)
+            )
+        alert, state = self._get_alert_record(session, name, project, with_state)
+        return self._transform_alert_config_record_to_schema(alert), state
 
     def get_alert_by_id(
         self, session, alert_id: int
@@ -5901,8 +5953,14 @@ class SQLDB(DBInterface):
             self._get_alert_record_by_id(session, alert_id)
         )
 
-    def enrich_alert(self, session, alert: mlrun.common.schemas.AlertConfig):
-        state = self.get_alert_state(session, alert.id)
+    def enrich_alert(
+        self,
+        session,
+        alert: mlrun.common.schemas.AlertConfig,
+        state: Optional[AlertState] = None,
+    ):
+        if not state:
+            state = self.get_alert_state(session, alert.id)
         alert.state = (
             mlrun.common.schemas.AlertActiveState.ACTIVE
             if state.active
@@ -6114,7 +6172,7 @@ class SQLDB(DBInterface):
     @staticmethod
     def _transform_alert_config_record_to_schema(
         alert_config_record: AlertConfig,
-    ) -> mlrun.common.schemas.AlertConfig:
+    ) -> typing.Optional[mlrun.common.schemas.AlertConfig]:
         if alert_config_record is None:
             return None
 
@@ -6137,10 +6195,24 @@ class SQLDB(DBInterface):
     def _get_alert_template_record(self, session, name: str) -> AlertTemplate:
         return self._query(session, AlertTemplate, name=name).one_or_none()
 
-    def _get_alert_record(self, session, name: str, project: str) -> AlertConfig:
-        return self._query(
-            session, AlertConfig, name=name, project=project
-        ).one_or_none()
+    def _get_alert_record(
+        self, session, name: str, project: str, with_state: bool = False
+    ) -> Optional[Union[AlertConfig, tuple[AlertConfig, AlertState]]]:
+        query = session.query(AlertConfig)
+
+        if with_state:
+            query = query.outerjoin(
+                AlertState, AlertState.parent_id == AlertConfig.id
+            ).add_entity(AlertState)
+
+        query = query.filter(AlertConfig.name == name, AlertConfig.project == project)
+
+        result = query.one_or_none()
+
+        if result is None:
+            # Explicitly return None for both if needed
+            return None if not with_state else (None, None)
+        return result
 
     def _get_alert_record_by_id(self, session, alert_id: int) -> AlertConfig:
         return self._query(session, AlertConfig, id=alert_id).one_or_none()
@@ -6155,8 +6227,20 @@ class SQLDB(DBInterface):
         active: bool = False,
         obj: typing.Optional[dict] = None,
     ):
-        alert = self.get_alert(session, project, name)
-        state = self.get_alert_state(session, alert.id)
+        query = (
+            self._query(session, AlertState)
+            .join(AlertConfig, AlertConfig.id == AlertState.parent_id)
+            .filter(
+                AlertConfig.name == name,
+                AlertConfig.project == project,
+            )
+        )
+        state = query.one_or_none()
+        if state is None:
+            raise mlrun.errors.MLRunNotFoundError(
+                f"Alert state not found for alert name: {name}, project: {project}"
+            )
+
         if count is not None:
             state.count = count
         state.last_updated = last_updated
@@ -6166,15 +6250,20 @@ class SQLDB(DBInterface):
         self._upsert(session, [state])
 
     def get_alert_state(self, session, alert_id: int) -> AlertState:
-        return self._query(session, AlertState, parent_id=alert_id).one()
+        state = self._query(session, AlertState, parent_id=alert_id).one_or_none()
+        if state is None:
+            raise mlrun.errors.MLRunNotFoundError(
+                f"Alert state not found for alert id: {alert_id}"
+            )
+        return state
 
     def get_alert_state_dict(self, session, alert_id: int) -> dict:
         state = self.get_alert_state(session, alert_id)
         if state is not None:
             return state.to_dict()
 
-    def create_alert_state(self, session, alert_record):
-        state = AlertState(count=0, parent_id=alert_record.id)
+    def create_alert_state(self, session, alert_id):
+        state = AlertState(count=0, parent_id=alert_id)
         self._upsert(session, [state])
 
     def delete_alert_notifications(
@@ -6611,7 +6700,7 @@ class SQLDB(DBInterface):
         session,
         cls,
         notification_objects: list[mlrun.model.Notification],
-        parent_id: str,
+        parent_id: Union[str, int],
         project: str,
     ):
         db_notifications = {
@@ -6621,12 +6710,6 @@ class SQLDB(DBInterface):
             )
         }
         notifications = []
-        logger.debug(
-            "Storing notifications",
-            notifications_length=len(notification_objects),
-            parent_id=parent_id,
-            project=project,
-        )
         for notification_model in notification_objects:
             new_notification = False
             notification = db_notifications.get(notification_model.name, None)
@@ -6877,6 +6960,13 @@ class SQLDB(DBInterface):
         page_size: int,
         kwargs: dict,
     ):
+        self._validate_integer_max_value(
+            PaginationCache.__table__.c.current_page, current_page
+        )
+        self._validate_integer_max_value(
+            PaginationCache.__table__.c.page_size, page_size
+        )
+
         # generate key hash from user, function, current_page and kwargs
         key = hashlib.sha256(
             f"{user}/{function}/{page_size}/{kwargs}".encode()
@@ -7105,6 +7195,7 @@ class SQLDB(DBInterface):
         latest_only: bool = False,
         offset: typing.Optional[int] = None,
         limit: typing.Optional[int] = None,
+        order_by: typing.Optional[str] = None,
     ) -> mlrun.common.schemas.ModelEndpointList:
         model_endpoints: list[mlrun.common.schemas.ModelEndpoint] = []
         for mep_record in self._find_model_endpoints(
@@ -7123,6 +7214,7 @@ class SQLDB(DBInterface):
             latest_only=latest_only,
             offset=offset,
             limit=limit,
+            order_by=order_by,
         ):
             model_endpoints.append(
                 self._transform_model_endpoint_model_to_schema(mep_record)
@@ -7269,3 +7361,31 @@ class SQLDB(DBInterface):
             query = query.limit(limit)
 
         return query
+
+    @staticmethod
+    def _validate_integer_max_value(column: Column, value: int):
+        """
+        Validate that the value of a column does not exceed the max allowed integer value for that column's type.
+
+        :param column: The SQLAlchemy column to check (e.g., PaginationCache.__table__.c.current_page).
+        :param value: The value to validate.
+        :raises: MLRunInvalidArgumentError if value exceeds the max allowed integer value for the column's type.
+        """
+        if isinstance(column.type, sqlalchemy.Integer):
+            # Validate against 32-bit max
+            if value > MAX_INT_32:
+                raise mlrun.errors.MLRunInvalidArgumentError(
+                    f"The '{column.name}' field value must be less than or equal to {MAX_INT_32}."
+                )
+
+        elif isinstance(column.type, sqlalchemy.BigInteger):
+            # Validate against 64-bit max
+            if value > MAX_INT_64:
+                raise mlrun.errors.MLRunInvalidArgumentError(
+                    f"The '{column.name}' field value must be less than or equal to {MAX_INT_64}."
+                )
+
+        else:
+            raise mlrun.errors.MLRunInvalidArgumentError(
+                f"Unsupported column type '{column.type}' for validation."
+            )

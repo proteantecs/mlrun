@@ -29,6 +29,7 @@ import zipfile
 from copy import deepcopy
 from os import environ, makedirs, path
 from typing import Callable, Optional, Union, cast
+from urllib.parse import urlparse
 
 import dotenv
 import git
@@ -83,6 +84,7 @@ from ..artifacts import (
     ModelArtifact,
 )
 from ..artifacts.manager import ArtifactManager, dict_to_artifact, extend_artifact_path
+from ..common.runtimes.constants import RunStates
 from ..datastore import store_manager
 from ..features import Feature
 from ..model import EntrypointParam, ImageBuilder, ModelObj
@@ -851,6 +853,7 @@ class ProjectSpec(ModelObj):
         build=None,
         custom_packagers: Optional[list[tuple[str, bool]]] = None,
         default_function_node_selector=None,
+        notifications=None,
     ):
         self.repo = None
 
@@ -891,6 +894,7 @@ class ProjectSpec(ModelObj):
         # whether it is mandatory for a run (raise exception on collection error) or not.
         self.custom_packagers = custom_packagers or []
         self._default_function_node_selector = default_function_node_selector or None
+        self.notifications = notifications or []
 
     @property
     def source(self) -> str:
@@ -1172,7 +1176,6 @@ class MlrunProject(ModelObj):
         self._artifact_manager = None
         self._notifiers = CustomNotificationPusher(
             [
-                NotificationTypes.slack,
                 NotificationTypes.console,
                 NotificationTypes.ipython,
             ]
@@ -2670,6 +2673,36 @@ class MlrunProject(ModelObj):
             timeout=timeout,
         )
 
+    def push_pipeline_notification_kfp_runner(
+        self,
+        pipeline_id: str,
+        current_run_state: mlrun_pipelines.common.models.RunStatuses,
+        message: str,
+        notifications: Optional[list] = None,
+    ):
+        """
+        Push notifications for a pipeline run(KFP).
+
+        :param pipeline_id:         Unique ID of the pipeline run.
+        :param current_run_state:   Current run state of the pipeline.
+        :param message:             Message to send in the notification.
+        :param notifications:       List of notifications to send.
+        """
+        current_run_state = RunStates.pipeline_run_status_to_run_state(
+            current_run_state
+        )
+        db = mlrun.get_run_db()
+        notifications = notifications or self.spec.notifications
+        notifications_to_send = []
+        for notification in notifications:
+            if current_run_state in notification.when:
+                notification_copy = notification.copy()
+                notification_copy.message = message
+                notifications_to_send.append(notification_copy)
+        db.push_pipeline_notifications(
+            pipeline_id, self.metadata.name, notifications_to_send
+        )
+
     def _instantiate_function(
         self,
         func: typing.Union[str, mlrun.runtimes.BaseRuntime] = None,
@@ -3576,9 +3609,11 @@ class MlrunProject(ModelObj):
     def set_model_monitoring_credentials(
         self,
         access_key: Optional[str] = None,
-        stream_path: Optional[str] = None,
+        stream_path: Optional[str] = None,  # Deprecated
         tsdb_connection: Optional[str] = None,
         replace_creds: bool = False,
+        *,
+        stream_profile_name: Optional[str] = None,
     ):
         """
         Set the credentials that will be used by the project's model monitoring
@@ -3590,13 +3625,13 @@ class MlrunProject(ModelObj):
                                           * None - will be set from the system configuration.
                                           * v3io - for v3io endpoint store, pass `v3io` and the system will generate the
                                             exact path.
-        :param stream_path:               Path to the model monitoring stream. By default, None. Options:
+        :param stream_path:               (Deprecated) This argument is deprecated. Use ``stream_profile_name`` instead.
+                                          Path to the model monitoring stream. By default, None. Options:
 
-                                          * None - will be set from the system configuration.
-                                          * v3io - for v3io stream, pass `v3io` and the system will generate the exact
-                                            path.
-                                          * Kafka - for Kafka stream, provide the full connection string without custom
-                                            topic, for example kafka://<some_kafka_broker>:<port>.
+                                          * ``"v3io"`` - for v3io stream, pass ``"v3io"`` and the system will generate
+                                            the exact path.
+                                          * Kafka - for Kafka stream, provide the full connection string without acustom
+                                            topic, for example ``"kafka://<some_kafka_broker>:<port>"``.
         :param tsdb_connection:           Connection string to the time series database. By default, None.
                                           Options:
 
@@ -3610,29 +3645,58 @@ class MlrunProject(ModelObj):
                                           your project this action can cause data loose and will require redeploying
                                           all model monitoring functions & model monitoring infra
                                           & tracked model server.
+        :param stream_profile_name:       The datastore profile name of the stream to be used in model monitoring.
+                                          The supported profiles are:
+
+                                          * :py:class:`~mlrun.datastore.datastore_profile.DatastoreProfileV3io`
+                                          * :py:class:`~mlrun.datastore.datastore_profile.DatastoreProfileKafkaSource`
+
+                                          You need to register one of them, and pass the profile's name.
         """
         db = mlrun.db.get_run_db(secrets=self._secrets)
         if tsdb_connection == "v3io":
             tsdb_profile = mlrun.datastore.datastore_profile.DatastoreProfileV3io(
-                name="mm-infra-tsdb"
+                name=mm_constants.DefaultProfileName.TSDB
             )
             self.register_datastore_profile(tsdb_profile)
             tsdb_profile_name = tsdb_profile.name
         else:
             tsdb_profile_name = None
-        if stream_path == "v3io":
-            stream_profile = mlrun.datastore.datastore_profile.DatastoreProfileV3io(
-                name="mm-infra-stream"
+
+        if stream_path:
+            warnings.warn(
+                "The `stream_path` argument is deprecated and will be removed in MLRun version 1.10.0. "
+                "Use `stream_profile_name` instead.",
+                FutureWarning,
             )
+            if stream_profile_name:
+                raise mlrun.errors.MLRunValueError(
+                    "If you set `stream_profile_name`, you must not pass `stream_path`."
+                )
+            if stream_path == "v3io":
+                stream_profile = mlrun.datastore.datastore_profile.DatastoreProfileV3io(
+                    name=mm_constants.DefaultProfileName.STREAM
+                )
+            else:
+                parsed_stream = urlparse(stream_path)
+                if parsed_stream.scheme != "kafka":
+                    raise mlrun.errors.MLRunValueError(
+                        f"Unsupported `stream_path`: '{stream_path}'."
+                    )
+                stream_profile = (
+                    mlrun.datastore.datastore_profile.DatastoreProfileKafkaSource(
+                        name=mm_constants.DefaultProfileName.STREAM,
+                        brokers=[parsed_stream.netloc],
+                        topics=[],
+                    )
+                )
             self.register_datastore_profile(stream_profile)
             stream_profile_name = stream_profile.name
-        else:
-            stream_profile_name = None
+
         db.set_model_monitoring_credentials(
             project=self.name,
             credentials={
                 "access_key": access_key,
-                "stream_path": stream_path,
                 "tsdb_connection": tsdb_connection,
                 "tsdb_profile_name": tsdb_profile_name,
                 "stream_profile_name": stream_profile_name,

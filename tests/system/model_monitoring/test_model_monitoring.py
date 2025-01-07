@@ -11,6 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
 import json
 import os
 import pickle
@@ -66,7 +67,7 @@ class TestModelEndpointsOperations(TestMLRunSystem):
         ]:
             return
         self.project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
 
@@ -110,7 +111,7 @@ class TestModelEndpointsOperations(TestMLRunSystem):
             tsdb_connection_string=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
         self.project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
         db = mlrun.get_run_db()
@@ -363,11 +364,39 @@ class TestModelEndpointsOperations(TestMLRunSystem):
         endpoints_intersect = in_endpoint_names.intersection(out_endpoint_names)
         assert len(endpoints_intersect) == number_of_endpoints
 
+    def test_max_archive_list_endpoints(self):
+        # Validates the process of listing model endpoints with max archive limitation. In this test
+        # we create 5 model endpoints and then create another one. The oldest one should be deleted
+        db = mlrun.get_run_db()
+
+        number_of_endpoints = 5
+        endpoints_in = [
+            self._mock_random_endpoint("testing") for _ in range(number_of_endpoints)
+        ]
+
+        for endpoint in endpoints_in:
+            db.create_model_endpoint(endpoint, creation_strategy="archive")
+
+        endpoints_out = self.project.list_model_endpoints(latest_only=False).endpoints
+        assert len(endpoints_out) == number_of_endpoints
+        created: Optional[datetime] = None
+        uid: Optional[str] = None
+        for mep in endpoints_out:
+            if not created or mep.metadata.created < created:
+                created = mep.metadata.created
+                uid = mep.metadata.uid
+
+        db.create_model_endpoint(
+            self._mock_random_endpoint("testing"), creation_strategy="archive"
+        )
+        endpoints_out = self.project.list_model_endpoints(latest_only=False).endpoints
+        assert uid not in [mep.metadata.uid for mep in endpoints_out]
+        assert len(endpoints_out) == 5  # max_archive=5
+
     def test_list_endpoints_filter(self):
         number_of_endpoints = 5
         db = mlrun.get_run_db()
 
-        # access_key = auth_info.data_session
         for i in range(number_of_endpoints):
             endpoint = self._mock_random_endpoint(
                 name=f"testing-{i}", function_tag=None
@@ -506,7 +535,7 @@ class TestBasicModelMonitoring(TestMLRunSystem):
         project = self.project
 
         project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
             replace_creds=True,  # remove once ML-7501 is resolved
         )
@@ -1113,7 +1142,7 @@ class TestBatchDrift(TestMLRunSystem):
 
         # Deploy model monitoring infra
         project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
         project.enable_model_monitoring(
@@ -1335,15 +1364,15 @@ class TestInferenceWithSpecialChars(TestMLRunSystem):
         cls.infer_results_df[mlrun.common.schemas.EventFieldType.TIMESTAMP] = (
             mlrun.utils.datetime_now()
         )
-        cls.endpoint_id = "5d6ce0e704442c0ac59a933cb4d238baba83bb5d"
         cls.function_name = f"{cls.name_prefix}-function"
+        cls.model_endpoint_name = f"{cls.name_prefix}-test"
         cls._train()
 
     def custom_setup(self) -> None:
         mlrun.runtimes.utils.global_context.set(None)
         # Set the model monitoring credentials
         self.project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
 
@@ -1364,10 +1393,13 @@ class TestInferenceWithSpecialChars(TestMLRunSystem):
 
     def _get_monitoring_feature_set(self) -> mlrun.feature_store.FeatureSet:
         model_endpoint = mlrun.get_run_db().get_model_endpoint(
-            project=self.project_name, endpoint_id=self.endpoint_id, name="testsssssss"
+            project=self.project_name,
+            name=self.model_endpoint_name,
+            function_name=self.function_name,
+            function_tag="latest",
         )
         return mlrun.feature_store.get_feature_set(
-            model_endpoint.status.monitoring_feature_set_uri
+            model_endpoint.spec.monitoring_feature_set_uri
         )
 
     def _test_feature_names(self) -> None:
@@ -1401,9 +1433,8 @@ class TestInferenceWithSpecialChars(TestMLRunSystem):
             model_path=self.project.get_artifact_uri(
                 key=self.model_name, category="model", tag="latest"
             ),
-            model_endpoint_name=f"{self.name_prefix}-test",
+            model_endpoint_name=self.model_endpoint_name,
             function_name=self.function_name,
-            endpoint_id=self.endpoint_id,
             context=mlrun.get_or_create_ctx(name=f"{self.name_prefix}-context"),  # pyright: ignore[reportGeneralTypeIssues]
             infer_results_df=self.infer_results_df,
             # TODO: activate ad-hoc mode when ML-5792 is done
@@ -1482,7 +1513,7 @@ class TestModelInferenceTSDBRecord(TestMLRunSystem):
 
     def test_record(self) -> None:
         self.project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
         self.project.enable_model_monitoring(
@@ -1520,7 +1551,7 @@ class TestModelEndpointWithManyFeatures(TestMLRunSystem):
         project = self.project
 
         project.set_model_monitoring_credentials(
-            stream_path=mlrun.mlconf.model_endpoint_monitoring.stream_connection,
+            stream_path=os.getenv("MLRUN_MODEL_ENDPOINT_MONITORING__STREAM_CONNECTION"),
             tsdb_connection=mlrun.mlconf.model_endpoint_monitoring.tsdb_connection,
         )
 

@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 import itertools
 import typing
 from datetime import datetime
@@ -48,6 +47,7 @@ import services.api.crud.model_monitoring.helpers
 import services.api.crud.secrets
 
 DEFAULT_FUNCTION_TAG = "latest"
+ARCHIVE_LIMITATION = 5
 
 
 class ModelEndpoints:
@@ -159,6 +159,7 @@ class ModelEndpoints:
             model_endpoint, attributes = self._archive_model_endpoint(
                 db_session=db_session,
                 model_endpoint=model_endpoint,
+                delete_old=True,
             )
         else:
             raise mlrun.errors.MLRunInvalidArgumentError(
@@ -297,7 +298,26 @@ class ModelEndpoints:
         self,
         db_session: sqlalchemy.orm.Session,
         model_endpoint: mlrun.common.schemas.ModelEndpoint,
+        delete_old: bool = False,
     ) -> tuple[mlrun.common.schemas.ModelEndpoint, dict]:
+        uid_to_delete = []
+        if delete_old:
+            old_uids = [
+                model_endpoint.metadata.uid
+                for model_endpoint in framework.utils.singletons.db.get_db()
+                .list_model_endpoints(
+                    project=model_endpoint.metadata.project,
+                    name=model_endpoint.metadata.name,
+                    function_name=model_endpoint.spec.function_name,
+                    function_tag=model_endpoint.spec.function_tag,
+                    latest_only=False,
+                    session=db_session,
+                    order_by="created",
+                )
+                .endpoints
+            ]
+            if len(old_uids) >= ARCHIVE_LIMITATION:
+                uid_to_delete = old_uids[: len(uid_to_delete) - ARCHIVE_LIMITATION + 1]
         model_endpoint = self._create_new_model_endpoint(
             db_session=db_session, model_endpoint=model_endpoint
         )
@@ -325,6 +345,16 @@ class ModelEndpoints:
             attributes[
                 mlrun.common.schemas.ModelEndpointSchema.MONITORING_FEATURE_SET_URI
             ] = monitoring_feature_set_uri
+        if uid_to_delete:
+            # delete old versions
+            framework.utils.singletons.db.get_db().delete_model_endpoints(
+                session=db_session,
+                project=model_endpoint.metadata.project,
+                uids=uid_to_delete,
+            )
+            self._delete_model_endpoint_monitoring_infra(
+                uids=uid_to_delete, project=model_endpoint.metadata.project
+            )
         return model_endpoint, attributes
 
     @staticmethod
@@ -844,18 +874,22 @@ class ModelEndpoints:
                                               V3IO resources.
         """
         logger.debug(
-            "Deleting model monitoring endpoints resources",
-            project_name=project_name,
+            "Deleting model monitoring endpoints resources", project_name=project_name
         )
+        try:
+            stream_path = mlrun.model_monitoring.get_stream_path(
+                project=project_name,
+                secret_provider=services.api.crud.secrets.get_project_secret_provider(
+                    project=project_name
+                ),
+            )
+        except mlrun.errors.MLRunNotFoundError:
+            # There is no MM infra in place for the project - no resources to delete
+            return
+
         # We would ideally base on config.v3io_api but can't for backwards compatibility reasons,
         # we're using the igz version heuristic
         # TODO : adjust for ce scenario
-        stream_path = mlrun.model_monitoring.get_stream_path(
-            project=project_name,
-            secret_provider=services.api.crud.secrets.get_project_secret_provider(
-                project=project_name
-            ),
-        )
         if stream_path.startswith("v3io") and (
             not mlrun.mlconf.igz_version or not mlrun.mlconf.v3io_api
         ):

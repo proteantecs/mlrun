@@ -61,6 +61,7 @@ class ModelEndpointSchema(MonitoringStrEnum):
     STATE = "state"
     MONITORING_MODE = "monitoring_mode"
     FIRST_REQUEST = "first_request"
+    SAMPLING_PERCENTAGE = "sampling_percentage"
 
     # status - operative
     LAST_REQUEST = "last_request"
@@ -137,6 +138,10 @@ class EventFieldType:
     SAMPLE_PARQUET_PATH = "sample_parquet_path"
     TIME = "time"
     TABLE_COLUMN = "table_column"
+    SAMPLING_PERCENTAGE = "sampling_percentage"
+    SAMPLING_RATE = "sampling_rate"
+    ESTIMATED_PREDICTION_COUNT = "estimated_prediction_count"
+    EFFECTIVE_SAMPLE_COUNT = "effective_sample_count"
 
 
 class FeatureSetFeatures(MonitoringStrEnum):
@@ -242,19 +247,18 @@ class ModelEndpointTarget(MonitoringStrEnum):
     SQL = "sql"
 
 
-class StreamKind(MonitoringStrEnum):
-    V3IO_STREAM = "v3io_stream"
-    KAFKA = "kafka"
-
-
 class TSDBTarget(MonitoringStrEnum):
     V3IO_TSDB = "v3io-tsdb"
     TDEngine = "tdengine"
 
 
+class DefaultProfileName(StrEnum):
+    STREAM = "mm-infra-stream"
+    TSDB = "mm-infra-tsdb"
+
+
 class ProjectSecretKeys:
     ACCESS_KEY = "MODEL_MONITORING_ACCESS_KEY"
-    STREAM_PATH = "STREAM_PATH"
     TSDB_CONNECTION = "TSDB_CONNECTION"
     TSDB_PROFILE_NAME = "TSDB_PROFILE_NAME"
     STREAM_PROFILE_NAME = "STREAM_PROFILE_NAME"
@@ -262,7 +266,7 @@ class ProjectSecretKeys:
     @classmethod
     def mandatory_secrets(cls):
         return [
-            cls.STREAM_PATH,
+            cls.STREAM_PROFILE_NAME,
             cls.TSDB_CONNECTION,
         ]
 

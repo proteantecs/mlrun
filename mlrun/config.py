@@ -610,8 +610,6 @@ default_config = {
         "parquet_batching_timeout_secs": timedelta(minutes=1).total_seconds(),
         # See mlrun.model_monitoring.db.tsdb.ObjectTSDBFactory for available options
         "tsdb_connection": "",
-        # See mlrun.common.schemas.model_monitoring.constants.StreamKind for available options
-        "stream_connection": "",
         "tdengine": {
             "timeout": 10,
             "retries": 1,
@@ -801,7 +799,7 @@ default_config = {
         # maximum allowed value for count in criteria field inside AlertConfig
         "max_criteria_count": 100,
         # interval for periodic events generation job
-        "events_generation_interval": "30",
+        "events_generation_interval": 30,  # seconds
     },
     "auth_with_client_id": {
         "enabled": False,

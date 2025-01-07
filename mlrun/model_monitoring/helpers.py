@@ -16,7 +16,7 @@ import datetime
 import functools
 import os
 from fnmatch import fnmatchcase
-from typing import TYPE_CHECKING, Callable, Optional, TypedDict, Union, cast
+from typing import TYPE_CHECKING, Callable, Optional, TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -34,7 +34,6 @@ from mlrun.common.schemas.model_monitoring.model_endpoints import (
     ModelEndpointMonitoringMetric,
     compose_full_name,
 )
-from mlrun.secrets import SecretsStore
 from mlrun.utils import logger
 
 if TYPE_CHECKING:

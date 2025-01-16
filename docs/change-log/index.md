@@ -1,23 +1,34 @@
 (change-log)=
 # Change log
-- [v1.7.1](#v171-2-december-2024) | [v1.7.0](#v170-1-november-2024)
-- [v1.6.4](#v164-2-july-2024) | [v1.6.3](#v163-4-june-2024)  | [v1.6.2](#v162-29-march-2024) | [v1.6.1](#v161-29-february-2024) | [v1.6.0](#v160-22-february-2024)
-- [v1.5.2](#v152-30-november-2023) | [v1.5.1](#v151-2-november-2023) | [v1.5.0](#v150-23-october-2023)
-- [v1.4.1](#v141-8-august-2023) | [v1.4.0](#v140-23-july-2023)
-- [v1.3.4](#v134-23-august-2023) | [v1.3.3](#v133-7-jun-2023) | [v1.3.2](#v132-4-jun-2023) | [v1.3.1](#v131-18-may-2023) | [v1.3.0](#v130-22-march-2023) 
-- [v1.2.3](#v123-15-may-2023) | [v1.2.2](#v122-8-may-2023) | [v1.2.1](#v121-8-january-2023) | [v1.2.0](#v120-1-december-2022)
-- [v1.1.3](#v113-28-december-2022) | [v1.1.2](#v112-20-november-2022) | [v1.1.1](#v111-18-october-2022) | [v1.1.0](#v110-6-september-2022)
-- [v1.0.6](#v106-16-august-2022) | [v1.0.5](#v105-11-august-2022) | [v1.0.4](#v104-13-june-2022) | [v1.0.3](#v103-7-june-2022) | [v1.0.2](#v102-19-may-2022) | [v1.0.0](#v100-22-april-2022)
+- [v1.7.2](#v1-7-2-16-january-2025) | [v1.7.1](#v1-7-1-2-december-2024) | [v1.7.0](#v1-7-0-1-november-2024)
+- [v1.6.4](#v1-6-4-2-july-2024) | [v1.6.3](#v1-6-3-4-june-2024)  | [v1.6.2](#v1-6-2-29-march-2024) | [v1.6.1](#v1-6-1-29-february-2024) | [v1.6.0](#v1-6-0-22-february-2024)
+- [v1.5.2](#v1-5-2-30-november-2023) | [v1.5.1](#v1-5-1-2-november-2023) | [v1.5.0](#v1-5-0-23-october-2023)
+- [v1.4.1](#v1-4-1-8-august-2023) | [v1.4.0](#v1-4-0-23-july-2023)
+- [v1.3.4](#v1-3-4-23-august-2023) | [v1.3.3](#v1-3-3-7-jun-2023) | [v1.3.2](#v1-3-2-4-jun-2023) | [v1.3.1](#v1-3-1-18-may-2023) | [v1.3.0](#v1-3-0-22-march-2023) 
+- [v1.2.3](#v1-2-3-15-may-2023) | [v1.2.2](#v1-2-2-8-may-2023) | [v1.2.1](#v1-2-1-8-january-2023) | [v1.2.0](#v1-2-0-1-december-2022)
+- [v1.1.3](#v1-1-3-28-december-2022) | [v1.1.2](#v1-1-2-20-november-2022) | [v1.1.1](#v1-1-1-18-october-2022) | [v1.1.0](#v1-1-0-6-september-2022)
+- [v1.0.6](#v1-0-6-16-august-2022) | [v1.0.5](#v1-0-5-11-august-2022) | [v1.0.4](#v1-0-4-13-june-2022) | [v1.0.3](#v1-0-3-7-june-2022) | [v1.0.2](#v1-0-2-19-may-2022) | [v1.0.0](#v1-0-0-22-april-2022)
 - [Open issues](#open-issues)
 - [Limitations](#limitations)
 - [Deprecations and removed code](#deprecations-and-removed-code)
 
-## v1.7.1 (2 December 2024)
+## v1.7.2 (16 January 2025)
 
-### Model monitoring
+### Closed issues
 | ID    |Description                                                                 |
 |-------|----------------------------------------------------------------------------|
-|ML-7731|Model monitoring can now be run on a larger scale, using MLRun's additional replicas/workers. To benefit from the scale-out: After upgrading to v1.7.1, in projects that already have model monitoring enabled, run `disable model-monitoring` followed by `enable_model_monitoring`.|
+|ML-8841 |Application runtimes no longer duplicate the configured resources for the running pod.|
+|ML-8842 |Failed pipelines now send notifications when using webhook.|
+|ML-8892 |UI: Artifact counters now display correctly.|
+|ML-8974 |UI: Artifacts stored as S3 now display in the UI.|
+|ML-9053 |Fixed the race condition when updating artifacts with the same key.|
+
+## v1.7.1 (2 December 2024)
+
+### Serving graph
+| ID    |Description                                                                 |
+|-------|----------------------------------------------------------------------------|
+|ML-7818|Serving graphs can now use a conditional step.|
 
 ### Breaking changes
 | ID    |Description                                                                 |
@@ -481,7 +492,6 @@ See [Deprecations and removed code](#deprecations-and-removed-code).
 |-------|------------------------------------------------------------------------------------------------------------------------------------|
 |ML-21|Supports job notifications. See full details in {ref}`notifications`, and [View in Git](https://github.com/mlrun/mlrun/pull/2414). |
 
-
 #### Projects
 | ID     | Description                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 |---------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -650,7 +660,6 @@ conda activate python39
 ### New and updated features
 
 #### Feature store
-
 | ID      | Description                                                                                                                                                                                                                                                                                                                                     |
 |---------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | ML-2592 | Offline data can be registered as feature sets (Tech Preview). See [Create a feature set without ingesting its data](../feature-store/feature-sets.md#create-a-feature-set-without-ingesting-its-data).                                                                                                                                         |
@@ -1078,7 +1087,7 @@ with a drill-down to view the steps and their details. [Tech Preview]
 |ML-3636|`get_online_feature_service` from Redis target returns truncated values. | NA                                                                                                                                                                                                                                                                                          | v1.3.0|
 |ML-3646|MapValues step on Spark ingest: keys of non-string type change to string type, sometime causing failures in graph logic.| NA | v1.2.1|
 |ML-3744|`get_offline_features` adds "Z" to the values of time_stamp column when using Spark engines. |NA|v1.3.1|
-|ML-3867|Cannot search for project owners by first name. | NA |   |                                                                                                                                                                                                                                                                                                                                                              | v1.4.0|
+|ML-3867|Cannot search for project owners by first name. | NA | v1.4.0  |                                                                                                                                                                                                                                                                                                                                                              | v1.4.0|
 |ML-6839|Schedules have a minimum interval between two scheduled jobs. By default, a job cannot be scheduled to run more than 2 times in 10 minutes. See {ref}`scheduled-jobs`.| NA                                                                                                                                                                                                                                                                                                                                                                       | v1.6.3 |
 |ML-4107| On scheduled ingestion (storey and pandas engines) from CSV source, ingests all of the source on each schedule iteration. | Use a different engine and/or source.                                                                                                                                                                                                                                                                                                                                    | v1.4.0 |	
 |ML-4153|When creating a passthrough feature-set in the UI, with no online target, the feature-set yaml includes a parquet offline target, which is ignored.| NA                                                                                                                                                                                                                                                                                                                                                                       | v1.4.0  |
@@ -1106,7 +1115,9 @@ with a drill-down to view the steps and their details. [Tech Preview]
 |ML-7955|The **Owner** field is blank for artifacts that are registered in the UI.| NA| v1.7.0|                                                                                                                                                                                                                                                                                                                                               | v1.7.0|
 |ML-8064|When using notifications with `when=running` the user always gets a default notification.|NA| v1.7.0|
 |ML-8419|When the MySQL server is unavailable, a project with non-V3IO model monitoring cannot be deleted.|Run `project.set_model_monitoring_credentials(endpoint_store_connection="v3io", stream_path="v3io", tsdb_connection="v3io", replace_creds=True)` before deleting the project.|v1.7.1|
-
+|ML-8754|The default spot-labels node-selector are removed when configuring the `allow` preemption mode with one of the node selectors defined in `mlconf.get_preemptible_node_selector()`.|Use a non-default label.|v1.7.1|
+|ML-8796|The application runtime has two containers: the nuclio container uses the default resources and the sidecar container uses the function resources. | NA   |v1.7.1|
+|ML-8949|Error `MultipleResultsFound` when reading DataItem because of duplicate artifacts tagged as `latest`.s|NA| v1.7.0| 
 ## Limitations
 
 | ID     |Description                                                                                                                                 |Workaround |Opened in|
@@ -1124,6 +1135,7 @@ with a drill-down to view the steps and their details. [Tech Preview]
 |ML-5732|When using an MLRun client previous to v1.6.0, the workflow step status might show completed when it is actually aborted. | Abort the job from the SDK instead of from the UI, or upgrade the client to v1.6.0 or higher. | v1.6.0 |
 |ML-8115|Deploying a model without monitoring does not create an endpoint. | NA | v1.7.0|
 |ML-8174| A loaded system takes a few minutes (±5) to calculate the statistics in the Projects Monitoring pane.|NA| v1.7.0|
+
 
 ## Deprecations and removed code
 

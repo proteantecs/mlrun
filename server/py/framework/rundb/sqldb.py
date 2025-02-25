@@ -152,7 +152,6 @@ class SQLRunDB(RunDBInterface):
         state: Optional[mlrun.common.runtimes.constants.RunStates] = None,
         states: Optional[list[mlrun.common.runtimes.constants.RunStates]] = None,
         sort: bool = True,
-        last: int = 0,
         iter: bool = False,
         start_time_from: Optional[datetime.datetime] = None,
         start_time_to: Optional[datetime.datetime] = None,
@@ -180,7 +179,6 @@ class SQLRunDB(RunDBInterface):
             if state is not None
             else states or None,
             sort=sort,
-            last=last,
             iter=iter,
             start_time_from=start_time_from,
             start_time_to=start_time_to,
@@ -229,18 +227,23 @@ class SQLRunDB(RunDBInterface):
         )
 
     def store_artifact(
-        self, key, artifact, uid=None, iter=None, tag="", project="", tree=None
+        self,
+        key,
+        artifact,
+        iter=None,
+        tag="",
+        project="",
+        tree=None,
     ):
         return self._transform_db_error(
             services.api.crud.Artifacts().store_artifact,
             self.session,
             key,
             artifact,
-            uid,
-            iter,
-            tag,
-            project,
-            tree,
+            tag=tag,
+            iter=iter,
+            project=project,
+            producer_id=tree,
         )
 
     def read_artifact(
@@ -1053,7 +1056,7 @@ class SQLRunDB(RunDBInterface):
     def list_model_endpoints(
         self,
         project: str,
-        name: Optional[str] = None,
+        names: Optional[str] = None,
         function_name: Optional[str] = None,
         function_tag: Optional[str] = None,
         model_name: Optional[str] = None,
@@ -1070,7 +1073,7 @@ class SQLRunDB(RunDBInterface):
 
     def get_model_endpoint(
         self,
-        name: str,
+        name: Optional[Union[str, list[str]]],
         project: str,
         function_name: Optional[str] = None,
         function_tag: Optional[str] = None,

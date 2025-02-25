@@ -28,6 +28,7 @@ import mlrun.model_monitoring.api as mm_api
 import mlrun.model_monitoring.applications.context as mm_context
 import mlrun.model_monitoring.applications.results as mm_results
 from mlrun.serving.utils import MonitoringApplicationToDict
+from mlrun.utils import logger
 
 
 class ModelMonitoringApplicationBase(MonitoringApplicationToDict, ABC):
@@ -89,12 +90,31 @@ class ModelMonitoringApplicationBase(MonitoringApplicationToDict, ABC):
         results = results if isinstance(results, list) else [results]
         return results, monitoring_context
 
+    @staticmethod
+    def _flatten_data_result(
+        result: Union[
+            list[mm_results._ModelMonitoringApplicationDataRes],
+            mm_results._ModelMonitoringApplicationDataRes,
+        ],
+    ) -> Union[list[dict], dict]:
+        """Flatten result/metric objects to dictionaries"""
+        if isinstance(result, mm_results._ModelMonitoringApplicationDataRes):
+            return result.to_dict()
+        if isinstance(result, list):
+            return [
+                element.to_dict()
+                if isinstance(element, mm_results._ModelMonitoringApplicationDataRes)
+                else element
+                for element in result
+            ]
+        return result
+
     def _handler(
         self,
         context: "mlrun.MLClientCtx",
         sample_data: Optional[pd.DataFrame] = None,
         reference_data: Optional[pd.DataFrame] = None,
-        endpoints: Optional[list[tuple[str, str]]] = None,
+        endpoints: Optional[Union[list[tuple[str, str]], list[str], str]] = None,
         start: Optional[str] = None,
         end: Optional[str] = None,
         base_period: Optional[int] = None,
@@ -137,13 +157,63 @@ class ModelMonitoringApplicationBase(MonitoringApplicationToDict, ABC):
                         }
                     )
                     result_key = (
-                        f"{endpoint_name}_{window_start.isoformat()}_{window_end.isoformat()}"
+                        f"{endpoint_name}-{endpoint_id}_{window_start.isoformat()}_{window_end.isoformat()}"
                         if window_start and window_end
-                        else endpoint_name
+                        else f"{endpoint_name}-{endpoint_id}"
                     )
-                    context.log_result(result_key, result)
+
+                    context.log_result(result_key, self._flatten_data_result(result))
         else:
-            return call_do_tracking()
+            return self._flatten_data_result(call_do_tracking())
+
+    @staticmethod
+    def _handle_endpoints_type_evaluate(
+        project: str,
+        endpoints: Union[list[tuple[str, str]], list[str], str, None],
+    ) -> list[tuple[str, str]]:
+        if endpoints:
+            if isinstance(endpoints, str) or (
+                isinstance(endpoints, list) and isinstance(endpoints[0], str)
+            ):
+                endpoints_list = (
+                    mlrun.get_run_db()
+                    .list_model_endpoints(
+                        project,
+                        names=endpoints,
+                        latest_only=True,
+                    )
+                    .endpoints
+                )
+                if endpoints_list:
+                    list_endpoints_result = [
+                        (endpoint.metadata.name, endpoint.metadata.uid)
+                        for endpoint in endpoints_list
+                    ]
+                    retrieve_ep_names = list(
+                        map(lambda endpoint: endpoint[0], list_endpoints_result)
+                    )
+                    missing = set(
+                        [endpoints] if isinstance(endpoints, str) else endpoints
+                    ) - set(retrieve_ep_names)
+                    if missing:
+                        logger.warning(
+                            "Could not list all the required endpoints.",
+                            missing_endpoint=missing,
+                            endpoints=list_endpoints_result,
+                        )
+                    endpoints = list_endpoints_result
+                else:
+                    raise mlrun.errors.MLRunNotFoundError(
+                        f"Did not find any model_endpoint named ' {endpoints}'"
+                    )
+
+            if not (
+                isinstance(endpoints, list) and isinstance(endpoints[0], (list, tuple))
+            ):
+                raise mlrun.errors.MLRunInvalidArgumentError(
+                    "Could not resolve endpoints as list of [(name, uid)]"
+                )
+        return endpoints
 
     @staticmethod
     def _window_generator(
@@ -337,7 +407,7 @@ class ModelMonitoringApplicationBase(MonitoringApplicationToDict, ABC):
         class_handler: Optional[str] = None,
         requirements: Optional[Union[str, list[str]]] = None,
         requirements_file: str = "",
-        endpoints: Optional[list[tuple[str, str]]] = None,
+        endpoints: Optional[Union[list[tuple[str, str]], list[str], str]] = None,
         start: Optional[datetime] = None,
         end: Optional[datetime] = None,
         base_period: Optional[int] = None,
@@ -365,13 +435,30 @@ class ModelMonitoringApplicationBase(MonitoringApplicationToDict, ABC):
         :param requirements:      List of Python requirements to be installed in the image.
         :param requirements_file: Path to a Python requirements file to be installed in the image.
         :param endpoints:         A list of tuples of the model endpoint (name, uid) to get the data from.
-                                  If provided, you have to provide also the start and end times of the data to analyze.
-        :param start:             The start time of the sample data.
-        :param end:               The end time of the sample data.
+                                  allow providing a list of model_endpoint names or name for a single model_endpoint.
+                                  Note: provide names retrieves the model all the active model endpoints using those
+                                  names (cross function model endpoints)
+                                  If provided, and ``sample_data`` is not ``None``, you have to provide also the
+                                  ``start`` and ``end`` times of the data to analyze from the model endpoints.
+        :param start:             The start time of the endpoint's data, not included.
+                                  If you want the model endpoint's data at ``start`` included, you need to subtract a
+                                  small ``datetime.timedelta`` from it.
+        :param end:               The end time of the endpoint's data, included.
+                                  Please note: when ``start`` and ``end`` are set, they create a left-open time interval
+                                  ("window") :math:`(\\operatorname{start}, \\operatorname{end}]` that excludes the
+                                  endpoint's data at ``start`` and includes the data at ``end``:
+                                  :math:`\\operatorname{start} < t \\leq \\operatorname{end}`, :math:`t` is the time
+                                  taken in the window's data.
         :param base_period:       The window length in minutes. If ``None``, the whole window from ``start`` to ``end``
                                   is taken. If an integer is specified, the application is run from ``start`` to ``end``
                                   in ``base_period`` length windows, except for the last window that ends at ``end`` and
-                                  therefore may be shorter.
+                                  therefore may be shorter:
+                                  :math:`(\\operatorname{start}, \\operatorname{start} + \\operatorname{base\\_period}],
+                                  (\\operatorname{start} + \\operatorname{base\\_period},
+                                  \\operatorname{start} + 2\\cdot\\operatorname{base\\_period}],
+                                  ..., (\\operatorname{start} +
+                                  m\\cdot\\operatorname{base\\_period}, \\operatorname{end}]`,
+                                  where :math:`m` is some positive integer.
 
         :returns: The output of the
                   :py:meth:`~mlrun.model_monitoring.applications.ModelMonitoringApplicationBase.do_tracking`
@@ -393,6 +480,10 @@ class ModelMonitoringApplicationBase(MonitoringApplicationToDict, ABC):
 
         params: dict[str, Union[list[tuple[str, str]], str, int, None]] = {}
         if endpoints:
+            endpoints = cls._handle_endpoints_type_evaluate(
+                project=project.name,
+                endpoints=endpoints,
+            )
             params["endpoints"] = endpoints
             if sample_data is None:
                 if start is None or end is None:

@@ -299,9 +299,12 @@ class SQLDB(DBInterface):
         if start_time:
             run.start_time = start_time
 
-        end_time = run_end_time(struct)
-        if end_time:
-            run.end_time = end_time
+        if (
+            run.state in mlrun.common.runtimes.constants.RunStates.terminal_states()
+            and not run.end_time
+        ):
+            end_time = run_end_time(struct)
+            self._update_run_end_time(run, struct, now=end_time)
 
         # Update the labels only if the run updates contains labels
         if run_labels(updates):
@@ -419,7 +422,6 @@ class SQLDB(DBInterface):
         labels: typing.Optional[typing.Union[str, list[str]]] = None,
         states: typing.Optional[list[mlrun.common.runtimes.constants.RunStates]] = None,
         sort: bool = True,
-        last: int = 0,
         iter: bool = False,
         start_time_from: typing.Optional[datetime] = None,
         start_time_to: typing.Optional[datetime] = None,
@@ -458,12 +460,6 @@ class SQLDB(DBInterface):
             query = query.filter(Run.end_time <= end_time_to)
         if sort:
             query = query.order_by(Run.start_time.desc())
-        if last:
-            if not sort:
-                raise mlrun.errors.MLRunInvalidArgumentError(
-                    "Limiting the number of returned records without sorting will provide non-deterministic results"
-                )
-            query = query.limit(last)
         if not iter:
             query = query.filter(Run.iteration == 0)
         if requested_logs is not None:
@@ -568,6 +564,12 @@ class SQLDB(DBInterface):
         run_data.setdefault("status", {})["start_time"] = start_time.isoformat()
         run.start_time = start_time
         self._update_run_updated_time(run, run_data, now=now)
+        if (
+            run.state in mlrun.common.runtimes.constants.RunStates.terminal_states()
+            and not run.end_time
+        ):
+            end_time = run_end_time(run_data)
+            self._update_run_end_time(run, run_data, now=end_time)
         run.struct = run_data
 
     def _add_run_name_query(self, query, name):
@@ -594,6 +596,15 @@ class SQLDB(DBInterface):
             now = datetime.now(timezone.utc)
         run_record.updated = now
         run_dict.setdefault("status", {})["last_update"] = now.isoformat()
+
+    @staticmethod
+    def _update_run_end_time(
+        run_record: Run, run_dict: dict, now: typing.Optional[datetime] = None
+    ):
+        if now is None:
+            now = datetime.now(timezone.utc)
+        run_record.end_time = now
+        run_dict.setdefault("status", {})["end_time"] = now.isoformat()
 
     @staticmethod
     def _update_run_state(run_record: Run, run_dict: dict):
@@ -1636,12 +1647,11 @@ class SQLDB(DBInterface):
 
         outer_query = outer_query.join(subquery, ArtifactV2.id == subquery.c.id)
 
+        # join may lose order, make sure order is applied on outer as well
+        outer_query = outer_query.order_by(ArtifactV2.updated.desc())
+
         if not limit:
-            # When a limit is applied, the results are ordered before limiting, so no additional ordering is needed.
-            # If no limit is specified, ensure the results are ordered after all filtering and joins have been applied.
-            outer_query = self._paginate_query(
-                outer_query.order_by(ArtifactV2.updated.desc()), offset, limit=None
-            )
+            outer_query = self._paginate_query(outer_query, offset, limit=None)
 
         results = outer_query.all()
         if not attach_tags:
@@ -2439,7 +2449,7 @@ class SQLDB(DBInterface):
         format_: str = mlrun.common.formatters.FunctionFormat.full,
     ):
         project = project or config.default_project
-        computed_tag = tag or mlrun.common.constants.RESERVED_TAG_NAME_LATEST
+        tag, computed_tag = self._compute_function_tag(tag, hash_key)
 
         obj, uid = self._get_function_db_object(session, name, project, tag, hash_key)
         tag_function_uid = None if not tag and hash_key else uid
@@ -2478,7 +2488,7 @@ class SQLDB(DBInterface):
     def _get_function_uid(
         self, session, name: str, tag: str, hash_key: str, project: str
     ):
-        computed_tag = tag or mlrun.common.constants.RESERVED_TAG_NAME_LATEST
+        tag, computed_tag = self._compute_function_tag(tag, hash_key)
         if not tag and hash_key:
             return hash_key
         else:
@@ -2491,6 +2501,15 @@ class SQLDB(DBInterface):
                     f"Function tag not found {function_uri}"
                 )
             return tag_function_uid
+
+    @staticmethod
+    def _compute_function_tag(tag: str, hash_key: str):
+        if hash_key and unversioned_tagged_object_uid_prefix in hash_key:
+            computed_tag = tag or hash_key.split("-", maxsplit=1)[1]
+            tag = computed_tag
+        else:
+            computed_tag = tag or mlrun.common.constants.RESERVED_TAG_NAME_LATEST
+        return tag, computed_tag
 
     def _delete_project_functions(self, session: Session, project: str):
         logger.debug("Removing project functions from db", project=project)
@@ -3689,7 +3708,6 @@ class SQLDB(DBInterface):
         self.delete_model_endpoints(session, project=name)
         self._delete_project_artifacts(session, project=name)
         self.delete_run_notifications(session, project=name)
-        self.delete_alert_notifications(session, project=name)
         self._delete_project_runs(session, project=name)
         self.delete_project_schedules(session, name)
         self._delete_project_functions(session, name)
@@ -5243,7 +5261,7 @@ class SQLDB(DBInterface):
         session,
         cls,
         name: typing.Optional[str] = None,
-        parent_id: typing.Optional[str] = None,
+        parent_id: typing.Optional[int] = None,
         project: typing.Optional[str] = None,
         limit: typing.Optional[int] = None,
     ):
@@ -5335,7 +5353,7 @@ class SQLDB(DBInterface):
         self,
         session: Session,
         project: str,
-        name: Optional[str] = None,
+        names: Optional[list[str]] = None,
         function_name: Optional[str] = None,
         function_tag: Optional[str] = None,
         model_name: Optional[str] = None,
@@ -5355,7 +5373,7 @@ class SQLDB(DBInterface):
 
         :param session: The DB session.
         :param project: The project of the model endpoint to query.
-        :param name: The name of the model endpoint to query.
+        :param names: The name of the model endpoint to query.
         :param function_name: The function name of the model endpoint to query.
         :param model_name: The model name of the model endpoint to query.
         :param labels: The labels of the model endpoint to query.
@@ -5373,12 +5391,13 @@ class SQLDB(DBInterface):
             ModelEndpoint.__table__  # pyright: ignore[reportAttributeAccessIssue]
         )
         # Apply filters
-        if name:
+        if names:
             query = self._filter_values(
                 query=query,
                 cls=model_endpoints_table,
                 key_filter=ModelEndpointSchema.NAME,
-                filtered_values=[name],
+                filtered_values=names,
+                combined=False,
             )
         if function_name:
             query = self._filter_values(
@@ -5637,7 +5656,9 @@ class SQLDB(DBInterface):
             model_endpoint_record.function_tag
         )
         model_endpoint_full_dict = self._fill_model_endpoint_with_function_data(
-            model_endpoint_record, model_endpoint_full_dict
+            model_endpoint_record,
+            model_endpoint_full_dict,
+            latest=bool(model_endpoint_record.tags),
         )
         model_endpoint_full_dict = self._fill_model_endpoint_with_model_data(
             model_endpoint_record, model_endpoint_full_dict
@@ -5656,9 +5677,11 @@ class SQLDB(DBInterface):
 
     @staticmethod
     def _fill_model_endpoint_with_function_data(
-        model_endpoint_record: ModelEndpoint, model_endpoint_full_dict: dict
+        model_endpoint_record: ModelEndpoint,
+        model_endpoint_full_dict: dict,
+        latest: bool,
     ) -> dict:
-        if model_endpoint_record.function:
+        if model_endpoint_record.function and latest:
             function_full_dict = model_endpoint_record.function.struct
             model_endpoint_full_dict[ModelEndpointSchema.STATE] = (
                 function_full_dict.get("status", {}).get(ModelEndpointSchema.STATE)
@@ -5667,9 +5690,12 @@ class SQLDB(DBInterface):
                 generate_object_uri(
                     project=model_endpoint_record.project,
                     name=model_endpoint_record.function_name,
-                    hash_key=function_full_dict.get("metadata", {}).get("hash"),
+                    hash_key=model_endpoint_record.function.uid,
                 )
             )
+        else:
+            model_endpoint_full_dict[ModelEndpointSchema.STATE] = "unknown"
+            model_endpoint_full_dict[ModelEndpointSchema.MODEL_TAG.FUNCTION_URI] = None
         return model_endpoint_full_dict
 
     @staticmethod
@@ -6041,7 +6067,12 @@ class SQLDB(DBInterface):
             return self.create_alert(session, alert)
         alert_record.full_object = alert.dict()
 
-        self._delete_alert_notifications(session, alert.name, alert, alert.project)
+        self._delete_alert_notifications(
+            session,
+            name=alert.name,
+            alert_id=alert.id,
+            project=alert.project,
+        )
         self._store_notifications(
             session,
             AlertConfig,
@@ -6110,6 +6141,81 @@ class SQLDB(DBInterface):
                 alert.updated = None
             alerts.append(alert)
         return alerts
+
+    def delete_project_alerts(
+        self,
+        session,
+        project: str,
+        chunk_size: typing.Optional[int] = None,
+    ) -> list[int]:
+        """
+        List all alert IDs associated with the specified project and delete them,
+        along with their related notifications, while ensuring foreign key constraints are respected.
+
+        Steps:
+        1. Retrieve all alert ids for the given project.
+        2. Delete the alerts from the database using ORM-based deletion to ensure cascading works.
+        3. Commit everything at once to improve performance and maintain transactional integrity.
+
+        :param session: SQLAlchemy session for database connection.
+        :param project: Project identifier for which alerts need to be listed and deleted.
+        :param chunk_size: Number of records to delete in each batch (default is 100).
+
+        :return: List of deleted alert IDs.
+        """
+        chunk_size = (
+            chunk_size or mlrun.mlconf.alerts.chunk_size_during_project_deletion
+        )
+        alert_ids = []
+        last_id = None
+
+        logger.debug(
+            "Deleting project alerts from db in chunks",
+            project=project,
+            chunk_size=chunk_size,
+        )
+
+        while True:
+            # Step 1: Retrieve alerts ids for the given project in chunks
+            query = session.query(AlertConfig.id).filter(AlertConfig.project == project)
+            if last_id is not None:
+                query = query.filter(AlertConfig.id > last_id)
+
+            alerts = query.order_by(AlertConfig.id).limit(chunk_size).all()
+
+            if not alerts:
+                # Exit the loop if there are no more alerts to delete
+                break
+
+            alert_ids_chunk = [alert[0] for alert in alerts]
+
+            # Update last processed ID
+            last_id = alert_ids_chunk[-1]
+
+            # Collect all deleted alert IDs
+            alert_ids.extend(alert_ids_chunk)
+
+            # Step 2: Perform ORM-based deletion for alerts in the current chunk
+            alerts_to_delete = (
+                session.query(AlertConfig)
+                .filter(AlertConfig.id.in_(alert_ids_chunk))
+                .all()
+            )
+            for alert in alerts_to_delete:
+                # Deleting via ORM ensures cascading works
+                # TODO: fix the foreign key constraint by implementing db level cascade
+                session.delete(alert)
+
+            # Step 3: Commit all changes in one transaction for the current chunk
+            session.commit()
+
+        logger.debug(
+            "Successfully deleted project alerts from db",
+            project=project,
+            number_of_deleted_alerts=len(alert_ids),
+        )
+        # Return the list of deleted alert IDs
+        return alert_ids
 
     def get_alert(
         self,
@@ -6458,25 +6564,16 @@ class SQLDB(DBInterface):
         state = AlertState(count=0, parent_id=alert_id)
         self._upsert(session, [state])
 
-    def delete_alert_notifications(
+    def _delete_alert_notifications(
         self,
         session,
+        alert_id: int,
         project: str,
-    ):
-        if resp := self._query(session, AlertConfig, project=project).all():
-            for alert in resp:
-                self._delete_alert_notifications(
-                    session, alert.name, alert, project, commit=False
-                )
-                session.delete(alert)
-
-            session.commit()
-
-    def _delete_alert_notifications(
-        self, session, name: str, alert: AlertConfig, project: str, commit: bool = True
+        name: typing.Optional[str] = None,
+        commit: bool = True,
     ):
         query = self._get_db_notifications(
-            session, AlertConfig, None, alert.id, project
+            session, AlertConfig, name, alert_id, project
         )
         for notification in query:
             session.delete(notification)
@@ -7446,7 +7543,7 @@ class SQLDB(DBInterface):
         self,
         session,
         project: str,
-        name: typing.Optional[str] = None,
+        names: typing.Optional[list[str]] = None,
         function_name: typing.Optional[str] = None,
         function_tag: typing.Optional[str] = None,
         model_name: typing.Optional[str] = None,
@@ -7464,7 +7561,7 @@ class SQLDB(DBInterface):
         model_endpoints: list[mlrun.common.schemas.ModelEndpoint] = []
         for mep_record in self._find_model_endpoints(
             session=session,
-            name=name,
+            names=names,
             project=project,
             labels=labels,
             function_name=function_name,

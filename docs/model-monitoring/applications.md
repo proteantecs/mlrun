@@ -46,6 +46,41 @@ The application class may implement a custom `__init__` constructor with argumen
 
 To register and deploy the application see {ref}`register-model-monitoring-app`.
 
+## Testing your application before deploying it 
+
+You can evaluate a model using the MLRun model monitoring tool during development, without deploying the actual model. This reduces   
+the time required to refine your model before deploying. You run and debug your application by running it on a mock server as a job 
+with data, but without a model endpoint or datastore profiles. 
+The monitoring creates metrics that assist you in understanding and refining the model behavior. 
+You can use this flow for both local and remote.
+Use {py:class}`mlrun.model_monitoring.applications.ModelMonitoringApplicationBase.evaluate` to test your code. 
+When you are satisfied with the application, just use {py:class}`mlrun.model_monitoring.applications.ModelMonitoringApplicationBase.to_job` to run it as a job. 
+
+to_mock_server
+
+```
+run_result = HistogramDataDriftApplication.evaluate(
+    func_path=mlrun.model_monitoring.applications.histogram_data_drift.__file__,
+    sample_data=sample_data,
+    reference_data=reference_data,
+    run_local=run_local,
+    image=self.image,  # Relevant for remote runs only
+)
+```
+
+```
+run_result = CountApp.evaluate(
+    func_path=str(Path(__file__).parent / "assets/application.py"),
+    func_name=f"function-{i}",
+    endpoints=endpoints,
+    start=start,
+    end=end,
+    run_local=run_local,
+    image=self.image,
+    base_period=1,
+)
+```
+
 ## Using the application context
 
 The `context` argument is a `MonitoringApplicationContext` object.
@@ -79,9 +114,7 @@ context.log_artifact(
 To create an Evidently based model monitoring application, import the following class:
 
 ```py
-from mlrun.model_monitoring.applications.evidently import (
-    EvidentlyModelMonitoringApplicationBase,
-)
+from mlrun.model_monitoring.applications import EvidentlyModelMonitoringApplicationBase
 ```
 
 Inherit from it, implement the `do_tracking` method, and pass the `evidently_workspace_path` and
@@ -108,7 +141,7 @@ project.set_model_monitoring_function(
 ```{note}
 It is recommended to specify the exact version of the `evidently` package for reproducibility with
 `"evidently==<x.y.z>"`. Get the supported version through
-`from mlrun.model_monitoring.applications.evidently import SUPPORTED_EVIDENTLY_VERSION`.
+`mlrun.model_monitoring.evidently_application.SUPPORTED_EVIDENTLY_VERSION`.
 ```
 
 See a full example in [Realtime monitoring and drift detection](../tutorials/05-model-monitoring.ipynb#evidently-app).

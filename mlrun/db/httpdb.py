@@ -350,10 +350,17 @@ class HTTPRunDB(RunDBInterface):
                 version=version,
             )
 
-        page_params = self._resolve_page_params(params)
+        page_params = deepcopy(params) or {}
+
+        if page_params.get("page-token") is None and page_params.get("page") is None:
+            page_params["page"] = 1
+
+        if page_params.get("page-size") is None:
+            page_params["page-size"] = config.httpdb.pagination.default_page_size
+
         response = _api_call(page_params)
 
-        # yields a single page of results
+        # Yield only a single page of results
         yield response
 
         if return_all:
@@ -566,17 +573,6 @@ class HTTPRunDB(RunDBInterface):
             )
             config.alerts.mode = server_cfg.get("alerts_mode") or config.alerts.mode
             config.system_id = server_cfg.get("system_id") or config.system_id
-            model_monitoring_store_prefixes = (
-                server_cfg.get("model_endpoint_monitoring_store_prefixes") or {}
-            )
-            for prefix in ["default", "user_space", "monitoring_application"]:
-                store_prefix_value = model_monitoring_store_prefixes.get(prefix)
-                if server_prefix_value is not None:
-                    setattr(
-                        config.model_endpoint_monitoring.store_prefixes,
-                        prefix,
-                        store_prefix_value,
-                    )
 
         except Exception as exc:
             logger.warning(
@@ -903,6 +899,7 @@ class HTTPRunDB(RunDBInterface):
         ] = None,  # Backward compatibility
         states: typing.Optional[list[mlrun.common.runtimes.constants.RunStates]] = None,
         sort: bool = True,
+        last: int = 0,
         iter: bool = False,
         start_time_from: Optional[datetime] = None,
         start_time_to: Optional[datetime] = None,
@@ -939,16 +936,19 @@ class HTTPRunDB(RunDBInterface):
         :param uid: Unique ID of the run, or a list of run UIDs.
         :param project: Project that the runs belongs to.
         :param labels: Filter runs by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :param state: Deprecated - List only runs whose state is specified (will be removed in 1.9.0)
         :param states: List only runs whose state is one of the provided states.
         :param sort: Whether to sort the result according to their start time. Otherwise, results will be
             returned by their internal order in the DB (order will not be guaranteed).
+        :param last: Deprecated - currently not used (will be removed in 1.8.0).
         :param iter: If ``True`` return runs from all iterations. Otherwise, return only runs whose ``iter`` is 0.
         :param start_time_from: Filter by run start time in ``[start_time_from, start_time_to]``.
         :param start_time_to: Filter by run start time in ``[start_time_from, start_time_to]``.
@@ -976,6 +976,7 @@ class HTTPRunDB(RunDBInterface):
             state=state,
             states=states,
             sort=sort,
+            last=last,
             iter=iter,
             start_time_from=start_time_from,
             start_time_to=start_time_to,
@@ -1036,7 +1037,6 @@ class HTTPRunDB(RunDBInterface):
 
         :param page: The page number to retrieve. If not provided, the next page will be retrieved.
         :param page_size: The number of items per page to retrieve. Up to `page_size` responses are expected.
-            Defaults to `mlrun.mlconf.httpdb.pagination.default_page_size` if not provided.
         :param page_token: A pagination token used to retrieve the next page of results. Should not be provided
             for the first request.
 
@@ -1068,12 +1068,14 @@ class HTTPRunDB(RunDBInterface):
         :param name: Name of the task which the runs belong to.
         :param project: Project to which the runs belong.
         :param labels: Filter runs by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :param state: Filter only runs which are in this state.
         :param days_ago: Filter runs whose start time is newer than this parameter.
         """
@@ -1095,6 +1097,8 @@ class HTTPRunDB(RunDBInterface):
         self,
         key,
         artifact,
+        # TODO: deprecated, remove in 1.8.0
+        uid=None,
         iter=None,
         tag=None,
         project="",
@@ -1104,6 +1108,8 @@ class HTTPRunDB(RunDBInterface):
 
         :param key: Identifying key of the artifact.
         :param artifact: The :py:class:`~mlrun.artifacts.Artifact` to store.
+        :param uid: A unique ID for this specific version of the artifact
+                    (deprecated, artifact uid is generated in the backend use `tree` instead)
         :param iter: The task iteration which generated this artifact. If ``iter`` is not ``None`` the iteration will
             be added to the key provided to generate a unique key for the artifact of the specific iteration.
         :param tag: Tag of the artifact.
@@ -1111,6 +1117,15 @@ class HTTPRunDB(RunDBInterface):
         :param tree: The tree (producer id) which generated this artifact.
         :returns: The stored artifact dictionary.
         """
+        if uid:
+            warnings.warn(
+                "'uid' is deprecated in 1.6.0 and will be removed in 1.8.0, use 'tree' instead.",
+                # TODO: Remove this in 1.8.0
+                FutureWarning,
+            )
+
+        # we do this because previously the 'uid' name was used for the 'tree' parameter
+        tree = tree or uid
         project = project or mlrun.mlconf.default_project
         endpoint_path = f"projects/{project}/artifacts/{key}"
 
@@ -1257,12 +1272,14 @@ class HTTPRunDB(RunDBInterface):
         :param project: Project name.
         :param tag: Return artifacts assigned this tag.
         :param labels: Filter artifacts by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :param since: Return artifacts updated after this date (as datetime object).
         :param until: Return artifacts updated before this date (as datetime object).
         :param iter: Return artifacts from a specific iteration (where ``iter=0`` means the root iteration). If
@@ -1283,7 +1300,7 @@ class HTTPRunDB(RunDBInterface):
         :param rows_per_partition: How many top rows (per sorting defined by `partition_sort_by` and `partition_order`)
             to return per group. Default value is 1.
         :param partition_sort_by: What field to sort the results by, within each partition defined by `partition_by`.
-            Currently, the only allowed values are `created` and `updated`.
+            Currently the only allowed values are `created` and `updated`.
         :param partition_order: Order of sorting within partitions - `asc` or `desc`. Default is `desc`.
         """
 
@@ -1306,7 +1323,7 @@ class HTTPRunDB(RunDBInterface):
             rows_per_partition=rows_per_partition,
             partition_sort_by=partition_sort_by,
             partition_order=partition_order,
-            return_all=not limit,
+            return_all=True,
         )
         return artifacts
 
@@ -1359,7 +1376,6 @@ class HTTPRunDB(RunDBInterface):
 
         :param page: The page number to retrieve. If not provided, the next page will be retrieved.
         :param page_size: The number of items per page to retrieve. Up to `page_size` responses are expected.
-            Defaults to `mlrun.mlconf.httpdb.pagination.default_page_size` if not provided.
         :param page_token: A pagination token used to retrieve the next page of results. Should not be provided
             for the first request.
 
@@ -1391,12 +1407,14 @@ class HTTPRunDB(RunDBInterface):
         :param project: Project that artifacts belong to.
         :param tag: Choose artifacts who are assigned this tag.
         :param labels: Filter artifacts by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :param days_ago: This parameter is deprecated and not used.
         :param tree: Delete artifacts filtered by tree.
         """
@@ -1508,7 +1526,6 @@ class HTTPRunDB(RunDBInterface):
         until: Optional[datetime] = None,
         kind: Optional[str] = None,
         format_: mlrun.common.formatters.FunctionFormat = mlrun.common.formatters.FunctionFormat.full,
-        states: typing.Optional[list[mlrun.common.schemas.FunctionState]] = None,
     ):
         """Retrieve a list of functions, filtered by specific criteria.
 
@@ -1516,17 +1533,18 @@ class HTTPRunDB(RunDBInterface):
         :param project: Return functions belonging to this project. If not specified, the default project is used.
         :param tag: Return function versions with specific tags. To return only tagged functions, set tag to ``"*"``.
         :param labels: Filter functions by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :param since: Return functions updated after this date (as datetime object).
         :param until: Return functions updated before this date (as datetime object).
         :param kind: Return only functions of a specific kind.
         :param format_: The format in which to return the functions. Default is 'full'.
-        :param states: Return only functions whose state is one of the provided states.
         :returns: List of function objects (as dictionary).
         """
         functions, _ = self._list_functions(
@@ -1538,7 +1556,6 @@ class HTTPRunDB(RunDBInterface):
             format_=format_,
             since=since,
             until=until,
-            states=states,
             return_all=True,
         )
         return functions
@@ -1592,7 +1609,6 @@ class HTTPRunDB(RunDBInterface):
 
         :param page: The page number to retrieve. If not provided, the next page will be retrieved.
         :param page_size: The number of items per page to retrieve. Up to `page_size` responses are expected.
-            Defaults to `mlrun.mlconf.httpdb.pagination.default_page_size` if not provided.
         :param page_token: A pagination token used to retrieve the next page of results. Should not be provided
             for the first request.
 
@@ -2287,6 +2303,7 @@ class HTTPRunDB(RunDBInterface):
             - ``full`` - return the full objects.
             - ``metadata_only`` (default) - return just metadata of the pipelines objects.
             - ``name_only`` - return just the names of the pipeline objects.
+            
         :param page_size: Size of a single page when applying pagination.
         """
 
@@ -2492,12 +2509,14 @@ class HTTPRunDB(RunDBInterface):
         :param tag: Return feature-sets which contain the features looked for, and are tagged with the specific tag.
         :param entities: Return only feature-sets which contain an entity whose name is contained in this list.
         :param labels: Filter feature-sets by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :returns: A list of mapping from feature to a digest of the feature-set, which contains the feature-set
             meta-data. Multiple entries may be returned for any specific feature due to multiple tags or versions
             of the feature-set.
@@ -2536,12 +2555,14 @@ class HTTPRunDB(RunDBInterface):
         :param tag: Return feature-sets which contain the features looked for, and are tagged with the specific tag.
         :param entities: Return only feature-sets which contain an entity whose name is contained in this list.
         :param labels: Filter feature-sets by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :returns: A list of features, and a list of their corresponding feature sets.
         """
 
@@ -2575,12 +2596,14 @@ class HTTPRunDB(RunDBInterface):
         :param name: The name of the entities to retrieve.
         :param tag: The tag of the specific entity version to retrieve.
         :param labels: Filter entities by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+            
         :returns: A list of entities.
         """
 
@@ -2613,12 +2636,14 @@ class HTTPRunDB(RunDBInterface):
         :param name: The name of the entities to retrieve.
         :param tag: The tag of the specific entity version to retrieve.
         :param labels: Filter entities by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+                or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+                or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+                the specified key-value pairs or key existence.
+            
         :returns: A list of entities.
         """
 
@@ -2684,12 +2709,14 @@ class HTTPRunDB(RunDBInterface):
         :param entities: Match feature-sets which contain entities whose name is in this list.
         :param features: Match feature-sets which contain features whose name is in this list.
         :param labels: Filter feature-sets by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+                or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+                or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+                the specified key-value pairs or key existence.
+            
         :param partition_by: Field to group results by. Only allowed value is `name`. When `partition_by` is specified,
             the `partition_sort_by` parameter must be provided as well.
         :param rows_per_partition: How many top rows (per sorting defined by `partition_sort_by` and `partition_order`)
@@ -2698,8 +2725,10 @@ class HTTPRunDB(RunDBInterface):
             Currently the only allowed value are `created` and `updated`.
         :param partition_order: Order of sorting within partitions - `asc` or `desc`. Default is `desc`.
         :param format_: Format of the results. Possible values are:
+        
             - ``minimal`` - Return minimal feature set objects, not including stats and preview for each feature set.
             - ``full`` - Return full feature set objects.
+            
         :returns: List of matching :py:class:`~mlrun.feature_store.FeatureSet` objects.
         """
 
@@ -2914,12 +2943,14 @@ class HTTPRunDB(RunDBInterface):
         :param tag: Match feature-vectors with specific tag.
         :param state: Match feature-vectors with a specific state.
         :param labels: Filter feature-vectors by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+                or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+                or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+                the specified key-value pairs or key existence.
+            
         :param partition_by: Field to group results by. Only allowed value is `name`. When `partition_by` is specified,
             the `partition_sort_by` parameter must be provided as well.
         :param rows_per_partition: How many top rows (per sorting defined by `partition_sort_by` and `partition_order`)
@@ -3164,12 +3195,14 @@ class HTTPRunDB(RunDBInterface):
             - ``full``  - Return full project objects.
 
         :param labels: Filter projects by label key-value pairs or key existence. This can be provided as:
+        
             - A dictionary in the format `{"label": "value"}` to match specific label key-value pairs,
-            or `{"label": None}` to check for key existence.
+              or `{"label": None}` to check for key existence.
             - A list of strings formatted as `"label=value"` to match specific label key-value pairs,
-            or just `"label"` for key existence.
+              or just `"label"` for key existence.
             - A comma-separated string formatted as `"label1=value1,label2"` to match entities with
-            the specified key-value pairs or key existence.
+              the specified key-value pairs or key existence.
+              
         :param state: Filter by project's state. Can be either ``online`` or ``archived``.
         """
         labels = self._parse_labels(labels)
@@ -3577,7 +3610,9 @@ class HTTPRunDB(RunDBInterface):
         :param events_format:   response format:
 
                                 separation: {"mep_id1":[...], "mep_id2":[...]}
+                                
                                 intersection {"intersect_metrics":[], "intersect_results":[]}
+                                
         :return: A dictionary of application metrics and/or results for the model endpoints formatted by events_format.
         """
         path = f"projects/{project}/model-endpoints/metrics"
@@ -3702,15 +3737,22 @@ class HTTPRunDB(RunDBInterface):
 
         :param model_endpoint: An object representing the model endpoint.
         :param creation_strategy: Strategy for creating or updating the model endpoint:
+        
             * **overwrite**:
+            
             1. If model endpoints with the same name exist, delete the `latest` one.
             2. Create a new model endpoint entry and set it as `latest`.
+            
             * **inplace** (default):
+            
             1. If model endpoints with the same name exist, update the `latest` entry.
             2. Otherwise, create a new entry.
+            
             * **archive**:
+            
             1. If model endpoints with the same name exist, preserve them.
             2. Create a new model endpoint with the same name and set it to `latest`.
+            
         :return: The created model endpoint object.
         """
 
@@ -4638,8 +4680,11 @@ class HTTPRunDB(RunDBInterface):
 
         :param name:    project name
         :param url:     git or tar.gz or .zip sources archive path e.g.:
+        
             git://github.com/mlrun/demo-xgb-project.git
+            
             http://mysite/archived-project.zip
+            
             The git project should include the project yaml file.
         :param secrets:         Secrets to store in project in order to load it from the provided url. For more
             information see :py:func:`mlrun.load_project` function.
@@ -4979,7 +5024,6 @@ class HTTPRunDB(RunDBInterface):
 
         :param page: The page number to retrieve. If not provided, the next page will be retrieved.
         :param page_size: The number of items per page to retrieve. Up to `page_size` responses are expected.
-            Defaults to `mlrun.mlconf.httpdb.pagination.default_page_size` if not provided.
         :param page_token: A pagination token used to retrieve the next page of results. Should not be provided
             for the first request.
 
@@ -5149,7 +5193,6 @@ class HTTPRunDB(RunDBInterface):
         format_: Optional[str] = None,
         since: Optional[datetime] = None,
         until: Optional[datetime] = None,
-        states: typing.Optional[list[mlrun.common.schemas.FunctionState]] = None,
         page: Optional[int] = None,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
@@ -5167,7 +5210,6 @@ class HTTPRunDB(RunDBInterface):
             "since": datetime_to_iso(since),
             "until": datetime_to_iso(until),
             "format": format_,
-            "state": states or None,
             "page": page,
             "page-size": page_size,
             "page-token": page_token,
@@ -5195,6 +5237,7 @@ class HTTPRunDB(RunDBInterface):
         ] = None,  # Backward compatibility
         states: typing.Optional[list[mlrun.common.runtimes.constants.RunStates]] = None,
         sort: bool = True,
+        last: int = 0,
         iter: bool = False,
         start_time_from: Optional[datetime] = None,
         start_time_to: Optional[datetime] = None,
@@ -5226,6 +5269,13 @@ class HTTPRunDB(RunDBInterface):
                 "using the `with_notifications` flag."
             )
 
+        if last:
+            # TODO: Remove this in 1.8.0
+            warnings.warn(
+                "'last' is deprecated and will be removed in 1.8.0.",
+                FutureWarning,
+            )
+
         if state:
             # TODO: Remove this in 1.9.0
             warnings.warn(
@@ -5241,6 +5291,7 @@ class HTTPRunDB(RunDBInterface):
             and not labels
             and not state
             and not states
+            and not last
             and not start_time_from
             and not start_time_to
             and not last_update_time_from
@@ -5361,33 +5412,6 @@ class HTTPRunDB(RunDBInterface):
                 background_task.metadata.name
             )
         return None
-
-    def _resolve_page_params(self, params: typing.Optional[dict]) -> dict:
-        """
-        Resolve the page parameters, setting defaults where necessary.
-        """
-        page_params = deepcopy(params) or {}
-        if page_params.get("page-token") is None and page_params.get("page") is None:
-            page_params["page"] = 1
-        if page_params.get("page-size") is None:
-            page_size = config.httpdb.pagination.default_page_size
-
-            if page_params.get("limit") is not None:
-                page_size = page_params["limit"]
-
-                # limit and page/page size are conflicting
-                page_params.pop("limit")
-            page_params["page-size"] = page_size
-
-        # this may happen only when page-size was explicitly set along with limit
-        # this is to ensure we will not get stopped by API on similar below validation
-        # but rather simply fallback to use page-size.
-        if page_params.get("page-size") and page_params.get("limit"):
-            logger.warning(
-                "Both 'limit' and 'page-size' are provided, using 'page-size'."
-            )
-            page_params.pop("limit")
-        return page_params
 
 
 def _as_json(obj):

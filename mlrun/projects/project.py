@@ -4000,8 +4000,9 @@ class MlrunProject(ModelObj):
         :param overwrite_build_params:  Overwrite existing build configuration (currently applies to
             requirements and commands)
             
-                                        * False: The new params are merged with the existing
-                                        * True: The existing params are replaced by the new ones
+            * False: The new params are merged with the existing
+            * True: The existing params are replaced by the new ones
+                   
         :param extra_args:  A string containing additional builder arguments in the format of command-line options,
             e.g. extra_args="--skip-tls-verify --build-arg A=val"
         :param force_build:  force building the image, even when no changes were made

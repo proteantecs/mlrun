@@ -1412,7 +1412,9 @@ class MlrunProject(ModelObj):
         """
 
         # validate the provided workflow_path
-        self._validate_file_path(workflow_path, param_name="workflow_path")
+        self._validate_file_path(
+            workflow_path, param_name="workflow_path", engine=engine
+        )
 
         if engine and "local" in engine and schedule:
             raise ValueError("'schedule' argument is not supported for 'local' engine.")
@@ -4059,9 +4061,9 @@ class MlrunProject(ModelObj):
             (by default `/home/mlrun_code`)
         """
         if not overwrite_build_params:
-            # TODO: change overwrite_build_params default to True in 1.8.0
+            # TODO: change overwrite_build_params default to True in 1.9.0
             warnings.warn(
-                "The `overwrite_build_params` parameter default will change from 'False' to 'True' in 1.8.0.",
+                "The `overwrite_build_params` parameter default will change from 'False' to 'True' in 1.9.0.",
                 mlrun.utils.OverwriteBuildParamsWarning,
             )
         default_image_name = mlrun.mlconf.default_project_image_name.format(
@@ -4136,9 +4138,9 @@ class MlrunProject(ModelObj):
             )
 
         if not overwrite_build_params:
-            # TODO: change overwrite_build_params default to True in 1.8.0
+            # TODO: change overwrite_build_params default to True in 1.9.0
             warnings.warn(
-                "The `overwrite_build_params` parameter default will change from 'False' to 'True' in 1.8.0.",
+                "The `overwrite_build_params` parameter default will change from 'False' to 'True' in 1.9.0.",
                 mlrun.utils.OverwriteBuildParamsWarning,
             )
 
@@ -5241,7 +5243,7 @@ class MlrunProject(ModelObj):
             if is_remote_enriched:
                 self.spec.repo.remotes[remote].set_url(clean_remote, enriched_remote)
 
-    def _validate_file_path(self, file_path: str, param_name: str):
+    def _validate_file_path(self, file_path: str, param_name: str, engine: str):
         """
         The function checks if the given file_path is a valid path.
         If the file_path is a relative path, it is completed by joining it with the self.spec.get_code_path()
@@ -5265,6 +5267,10 @@ class MlrunProject(ModelObj):
             raise mlrun.errors.MLRunInvalidArgumentError(
                 f"Invalid '{param_name}': '{file_path}'. Got a remote URL without a file suffix."
             )
+
+        # if engine is remote then skip the local file validation
+        if engine and not engine.startswith("remote"):
+            return
 
         code_path = self.spec.get_code_path()
 

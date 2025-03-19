@@ -3484,7 +3484,7 @@ class MlrunProject(ModelObj):
                 "Remote repo is not defined, use .create_remote() + push()"
             )
 
-        if engine not in ["remote"] and not schedule:
+        if (engine is None or not engine.startswith("remote")) and not schedule:
             # For remote/scheduled runs there is no need to sync functions as they can be loaded dynamically during run
             self.sync_functions(always=sync, silent=True)
             if not self.spec._function_objects:
@@ -3692,13 +3692,13 @@ class MlrunProject(ModelObj):
             import mlrun
             from mlrun.datastore.datastore_profile import (
                 DatastoreProfileKafkaSource,
-                TDEngineDatastoreProfile,
+                DatastoreProfileTDEngine,
             )
 
             project = mlrun.get_or_create_project("mm-infra-setup")
 
             # Create and register TSDB profile
-            tsdb_profile = TDEngineDatastoreProfile(
+            tsdb_profile = DatastoreProfileTDEngine(
                 name="my-tdengine",
                 host="<tdengine-server-ip-address>",
                 port=6041,
@@ -3750,7 +3750,7 @@ class MlrunProject(ModelObj):
                                           monitoring. The supported profiles are:
 
                                           * :py:class:`~mlrun.datastore.datastore_profile.DatastoreProfileV3io`
-                                          * :py:class:`~mlrun.datastore.datastore_profile.TDEngineDatastoreProfile`
+                                          * :py:class:`~mlrun.datastore.datastore_profile.DatastoreProfileTDEngine`
 
                                           You need to register one of them, and pass the profile's name.
         :param stream_profile_name:       The datastore profile name of the stream to be used in model monitoring.

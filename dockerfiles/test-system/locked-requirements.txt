@@ -971,9 +971,15 @@ executing==2.2.0 \
     --hash=sha256:11387150cad388d62750327a53d3339fad4888b39a6fe233c3afbb54ecffd3aa \
     --hash=sha256:5d108c028108fe2551d1a7b2e8b713341e2cb4fc0aa7dcf966fa4327a5226755
     # via stack-data
+<<<<<<< HEAD
 faker==37.1.0 \
     --hash=sha256:ad9dc66a3b84888b837ca729e85299a96b58fdaef0323ed0baace93c9614af06 \
     --hash=sha256:dc2f730be71cb770e9c715b13374d80dbcee879675121ab51f9683d262ae9a1c
+=======
+faker==37.0.2 \
+    --hash=sha256:8955706c56c28099585e9e2b6f814eb0a3a227eb36a2ee3eb9ab577c4764eacc \
+    --hash=sha256:948bd27706478d3aa0b6f9f58b9f25207098f6ca79852c7b49c44a8ced2bc59b
+>>>>>>> 88f5b29ca ([SDK] Bump max python version and add kfp v2 requirement [feature/python-3-12] (#7476))
     # via polyfactory
 fastapi==0.115.12 \
     --hash=sha256:1e2c2a2646905f9e83d32f04a3f86aff4a286669c6c950ca95b5fd68c2602681 \
@@ -1282,7 +1288,10 @@ google-crc32c==1.7.0 \
     --hash=sha256:c8c15a04b290c7556f277acc55ad98503a8bc0893ea6860fd5b5d210f3f558ce \
     --hash=sha256:e1b0d6044799f6ac51d1cc2decb997280a83c448b3bef517a54b57a3b71921c0 \
     --hash=sha256:e4c29f7718f48e32810a41b17126e0ca588a0ae6158b4da2926d8074241a155d \
+<<<<<<< HEAD
     --hash=sha256:e545b51ddf97f604d30114f7c23eecaf4c06cd6c023ff1ae0b80dcd99af32833 \
+=======
+>>>>>>> 88f5b29ca ([SDK] Bump max python version and add kfp v2 requirement [feature/python-3-12] (#7476))
     --hash=sha256:f04e58dbe1bf0c9398e603a9be5aaa09e0ba7eb022a3293195d8749459a01069 \
     --hash=sha256:f2daec556d537b07af25fa3f91841f022dd6869a648ca4aea1add56f87b80647 \
     --hash=sha256:f714fe5cdf5007d7064c57cf7471a99e0cbafda24ddfa829117fc3baafa424f7 \
@@ -1743,9 +1752,15 @@ humanfriendly==10.0 \
     --hash=sha256:1697e1a8a8f550fd43c2865cd84542fc175a61dcb779b6fee18cf6b6ccba1477 \
     --hash=sha256:6b0b831ce8f15f7300721aa49829fc4e83921a9a301cc7f606be6686a2288ddc
     # via -r dockerfiles/mlrun-api/requirements.txt
+<<<<<<< HEAD
 hypothesis==6.130.4 \
     --hash=sha256:cda4a57115d10ecbefe0a9cc8d69d20a13eb56ecbfe7c24eaee5d368c2b7c477 \
     --hash=sha256:d0672eb0ac1060b0324b0e43925a50b2bef1c60a32739bb9233000d85838436a
+=======
+hypothesis==6.129.4 \
+    --hash=sha256:45a31fe2b936688b2954f375c7f87e9dfefa4f2cddfa31cdeba15d77600e1286 \
+    --hash=sha256:e9fd66c25b8f0aa6395ce6728360892c3af22529cc16cae7512a4672776d4781
+>>>>>>> 88f5b29ca ([SDK] Bump max python version and add kfp v2 requirement [feature/python-3-12] (#7476))
     # via -r dev-requirements.txt
 idna==3.10 \
     --hash=sha256:12f65c9b470abda6dc35cf8e63cc574b1c52b11df2c86030af0ac09b01b13ea9 \
@@ -1927,9 +1942,15 @@ jupyterlab-pygments==0.3.0 \
     --hash=sha256:721aca4d9029252b11cfa9d185e5b5af4d54772bb8072f9b7036f4170054d35d \
     --hash=sha256:841a89020971da1d8693f1a99997aefc5dc424bb1b251fd6322462a1b8842780
     # via nbconvert
+<<<<<<< HEAD
 kafka-python==2.1.3 \
     --hash=sha256:691fdde4fab39e981fb353867b457f0a027bd291d7825d7116f2057330c0ddd5 \
     --hash=sha256:f312ec01b8b21a9ba1a66d0a5ad0ab5ed732640c1ac886648ef328f6ef4ddb54
+=======
+kafka-python==2.1.2 \
+    --hash=sha256:2a31ecfe4bb91d6009dd97593dcbe8dc7ba161accde2cb9342583a8f862abda7 \
+    --hash=sha256:446235fdce7ed5d9ff48de2c31651a85659105a8d2ac0b4abb249f7758d8cfc6
+>>>>>>> 88f5b29ca ([SDK] Bump max python version and add kfp v2 requirement [feature/python-3-12] (#7476))
     # via
     #   -r dockerfiles/mlrun-kfp/../../extras-requirements.txt
     #   -r extras-requirements.txt
@@ -1948,6 +1969,9 @@ kfp-server-api==1.8.5 ; python_full_version < '3.11' \
     # via
     #   kfp
     #   mlrun-pipelines-kfp-v1-8
+kfp-server-api==2.4.0 ; python_full_version >= '3.11' \
+    --hash=sha256:9d71ce49fc6757af14b052cc47e4cb531cb4e4584c2ea76ec02b9197ee9a674f
+    # via mlrun-pipelines-kfp-v2
 kiwisolver==1.4.7 ; python_full_version < '3.10' \
     --hash=sha256:073a36c8273647592ea332e816e75ef8da5c303236ec0167196793eb1e34657a \
     --hash=sha256:08471d4d86cbaec61f86b217dd938a83d85e03785f51121e791a6e6689a3be95 \
@@ -2442,6 +2466,10 @@ mlrun-pipelines-kfp-v1-8==0.3.9 ; python_full_version < '3.11' \
     #   -r dockerfiles/mlrun-api/requirements.txt
     #   -r dockerfiles/mlrun-kfp/requirements.txt
     #   -r requirements.txt
+mlrun-pipelines-kfp-v2==0.3.8 ; python_full_version >= '3.11' \
+    --hash=sha256:84d729d9276492dad37e8f297fa9f1bdfdb2b065823dd3459762af111c564672 \
+    --hash=sha256:c2fc7d9ba9dc21b69d7c7acf79653b9e6891d3b30a2a2a35f86aeee17ca32510
+    # via -r requirements.txt
 more-itertools==10.6.0 \
     --hash=sha256:2cd7fad1009c31cc9fb6a035108509e6547547a7a738374f10bd49a09eb3ee3b \
     --hash=sha256:6eb054cb4b6db1473f6e15fcc676a08e4732548acd47c708f0e179c2c7c01e89
@@ -4210,9 +4238,15 @@ send2trash==1.8.3 \
     --hash=sha256:0c31227e0bd08961c7665474a3d1ef7193929fedda4233843689baa056be46c9 \
     --hash=sha256:b18e7a3966d99871aefeb00cfbcfdced55ce4871194810fc71f4aa484b953abf
     # via jupyter-server
+<<<<<<< HEAD
 setuptools==78.1.0 \
     --hash=sha256:18fd474d4a82a5f83dac888df697af65afa82dec7323d09c3e37d1f14288da54 \
     --hash=sha256:3e386e96793c8702ae83d17b853fb93d3e09ef82ec62722e61da5cd22376dcd8
+=======
+setuptools==77.0.3 \
+    --hash=sha256:583b361c8da8de57403743e756609670de6fb2345920e36dc5c2d914c319c945 \
+    --hash=sha256:67122e78221da5cf550ddd04cf8742c8fe12094483749a792d56cd669d6cf58c
+>>>>>>> 88f5b29ca ([SDK] Bump max python version and add kfp v2 requirement [feature/python-3-12] (#7476))
     # via
     #   -r requirements.txt
     #   grpcio-tools

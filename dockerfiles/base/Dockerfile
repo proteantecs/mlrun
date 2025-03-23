@@ -76,7 +76,7 @@ ENV UV_SYSTEM_PYTHON=true UV_LINK_MODE=copy
 RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=dockerfiles/base/locked-requirements.txt,target=locked-requirements.txt \
-    uv pip install --verify-hashes -r locked-requirements.txt
+    uv pip install --verify-hashes -r locked-requirements.txt --python-version=${MLRUN_PYTHON_VERSION}
 
 COPY . .
 
@@ -84,4 +84,4 @@ RUN rm -rf ./server/go
 
 RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
-    uv pip install .[complete]
+    uv pip install .[complete] --python-version=${MLRUN_PYTHON_VERSION}

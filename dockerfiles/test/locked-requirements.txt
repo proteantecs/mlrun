@@ -264,9 +264,9 @@ azure-keyvault-secrets==4.9.0 \
     # via
     #   -r dockerfiles/mlrun-kfp/../../extras-requirements.txt
     #   -r extras-requirements.txt
-azure-storage-blob==12.25.0 \
-    --hash=sha256:42364ca8f9f49dbccd0acc10144ed47bb6770bf78719970b51915f048891abba \
-    --hash=sha256:a38e18bf10258fb19028f343db0d3d373280c6427a619c98c06d76485805b755
+azure-storage-blob==12.25.1 \
+    --hash=sha256:1f337aab12e918ec3f1b638baada97550673911c4ceed892acc8e4e891b74167 \
+    --hash=sha256:4f294ddc9bc47909ac66b8934bd26b50d2000278b10ad82cc109764fdc6e0e3b
     # via adlfs
 backports-tarfile==1.2.0 ; python_full_version < '3.12' \
     --hash=sha256:77e284d754527b01fb1e6fa8a1afe577858ebe4e9dad8919e34c862cb399bc34 \
@@ -2448,7 +2448,9 @@ mlrun-pipelines-kfp-v1-8==0.3.9 ; python_full_version < '3.11' \
 mlrun-pipelines-kfp-v2==0.3.8 ; python_full_version >= '3.11' \
     --hash=sha256:84d729d9276492dad37e8f297fa9f1bdfdb2b065823dd3459762af111c564672 \
     --hash=sha256:c2fc7d9ba9dc21b69d7c7acf79653b9e6891d3b30a2a2a35f86aeee17ca32510
-    # via -r dockerfiles/test/requirements.txt
+    # via
+    #   -r dockerfiles/test/requirements.txt
+    #   -r requirements.txt
 more-itertools==10.6.0 \
     --hash=sha256:2cd7fad1009c31cc9fb6a035108509e6547547a7a738374f10bd49a09eb3ee3b \
     --hash=sha256:6eb054cb4b6db1473f6e15fcc676a08e4732548acd47c708f0e179c2c7c01e89
@@ -4450,9 +4452,9 @@ terminado==0.18.1 \
     # via
     #   jupyter-server
     #   jupyter-server-terminals
-textual==2.1.2 ; sys_platform != 'win32' \
-    --hash=sha256:95f37f49e930838e721bba8612f62114d410a3019665b6142adabc14c2fb9611 \
-    --hash=sha256:aae3f9fde00c7440be00e3c3ac189e02d014f5298afdc32132f93480f9e09146
+textual==3.0.0 ; sys_platform != 'win32' \
+    --hash=sha256:0bf9f8523541340d5357724d60868db652fb287ac7b13e6cf4553d45a6d9a9d5 \
+    --hash=sha256:21ffa46cff719338e6f34510d9249d76279af32598e311a1505285c436f35ab6
     # via memray
 threadpoolctl==3.6.0 \
     --hash=sha256:43a0b8fd5a2928500110039e43a5eed8480b918967083ea48dc3ab9f13c4a7fb \

@@ -23,7 +23,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+from optparse import Option
 from pathlib import Path
+from typing import Optional
 
 import requests
 import typer
@@ -475,7 +477,7 @@ def add_dns_entries_to_hosts(namespace: str, target_ip: str):
         echo_color(f"Failed to update /etc/hosts: {exc}", err=True)
 
 
-def get_node_external_ip(debug: bool = False) -> str | None:
+def get_node_external_ip(debug: bool = False) -> Optional[str]:
     try:
         res = subprocess.run(
             ["kubectl", "get", "nodes", "-o", "json"],

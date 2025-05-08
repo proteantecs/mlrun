@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright 2023 Iguazio
+# Copyright 2025 Iguazio
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -45,6 +45,7 @@ HELM_REPOS = {
     "minio": "https://charts.min.io/",
     "spark-operator": "https://kubeflow.github.io/spark-operator",
     "prometheus-community": "https://prometheus-community.github.io/helm-charts",
+    "bitnami": "https://charts.bitnami.com/bitnami",
 }
 
 REQUIRED_COMMANDS = ["git", "helm", "kubectl"]

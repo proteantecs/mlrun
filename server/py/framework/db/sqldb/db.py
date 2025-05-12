@@ -31,7 +31,6 @@ import pytz
 import sqlalchemy
 from sqlalchemy import (
     Column,
-    MetaData,
     and_,
     case,
     delete,
@@ -5356,11 +5355,19 @@ class SQLDB(DBInterface):
             session.query(ModelEndpoint)
             .options(
                 selectinload(ModelEndpoint.function).options(
-                    load_only(Function.name, Function.state, Function.project, Function.uid),
+                    load_only(
+                        Function.name, Function.state, Function.project, Function.uid
+                    ),
                     selectinload(Function.tags),
                 ),
                 selectinload(ModelEndpoint.model).options(
-                    load_only(ArtifactV2.key, ArtifactV2.project, ArtifactV2.iteration, ArtifactV2.producer_id, ArtifactV2.uid)
+                    load_only(
+                        ArtifactV2.key,
+                        ArtifactV2.project,
+                        ArtifactV2.iteration,
+                        ArtifactV2.producer_id,
+                        ArtifactV2.uid,
+                    )
                 ),
                 selectinload(ModelEndpoint.tags),
             )

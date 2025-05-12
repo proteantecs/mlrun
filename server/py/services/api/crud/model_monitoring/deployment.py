@@ -741,11 +741,13 @@ class MonitoringDeployment:
             project=self.project, profile=tsdb_profile
         ).create_tables()
 
-    def list_model_monitoring_functions(self) -> list:
+    def list_model_monitoring_functions(self, labels: typing.Optional[list[str]] = None) -> list:
         """Retrieve a list of all the model monitoring functions."""
         model_monitoring_labels_list = [
             f"{mm_constants.ModelMonitoringAppLabel.KEY}={mm_constants.ModelMonitoringAppLabel.VAL}"
         ]
+        if labels:
+            model_monitoring_labels_list += labels
         return services.api.crud.Functions().list_functions(
             db_session=self.db_session,
             project=self.project,
@@ -755,10 +757,20 @@ class MonitoringDeployment:
     def function_summaries(self, start: datetime,
                            names: typing.Optional[list[str]] = None,
                            labels: typing.Optional[list[str]] = None,
-                           include_system: bool = True) -> list[mlrun.common.schemas.model_monitoring.FunctionSummary]:
+                           include_stats: bool = True) -> list[mlrun.common.schemas.model_monitoring.FunctionSummary]:
         """
         Retrieve a list of all the model monitoring functions with their summaries.
         """
+        mm_functions = self.list_model_monitoring_functions(labels=labels)
+        if names:
+            mm_functions = [
+                fn for fn in mm_functions if fn["metadata"]["name"] in names
+            ]
+        if not mm_functions:
+            logger.info("No model monitoring applications found")
+        # if include_stats:
+
+
 
 
     async def disable_model_monitoring(

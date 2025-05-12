@@ -338,7 +338,7 @@ class _FunctionSummariesParams:
     start: datetime
     names: Optional[list[str]] = None
     labels: Optional[list[str]] = None
-    include_system: bool = True
+    include_stats: bool = True
 
 @router.get("/function-summaries")
 async def get_model_monitoring_function_summaries(

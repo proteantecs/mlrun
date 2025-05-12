@@ -15,7 +15,7 @@
 import http
 from dataclasses import dataclass
 from typing import Annotated, Optional
-
+from datetime import datetime
 import fastapi
 import semver
 from fastapi import APIRouter, Depends, Header, Path, Query
@@ -329,3 +329,56 @@ def set_model_monitoring_credentials(
         stream_profile_name=stream_profile_name,
         replace_creds=replace_creds,
     )
+
+@dataclass
+class _FunctionSummariesParams:
+    project: str
+    auth_info: mlrun.common.schemas.AuthInfo
+    db_session: Session
+    start: datetime
+    names: Optional[list[str]] = None
+    labels: Optional[list[str]] = None
+    include_system: bool = True
+
+@router.get("/function-summaries")
+async def get_model_monitoring_function_summaries(
+    commons: Annotated[_FunctionSummariesParams, Depends(_common_parameters)],
+) -> list[mlrun.common.schemas.model_monitoring.FunctionSummary]:
+    pass
+
+
+    # await framework.utils.auth.verifier.AuthVerifier().filter_project_resources_by_permissions(
+    #     mlrun.common.schemas.AuthorizationResourceTypes.function,
+    #     _functions,
+    #     lambda function: (
+    #         function.get("metadata", {}).get(
+    #             "project", mlrun.mlconf.default_project
+    #         ),
+    #         function["metadata"]["name"],
+    #     ),
+    #     auth_info,
+    # )
+
+
+    # func_summary = await run_in_threadpool(
+    #     services.api.crud.Functions().get_function,
+    #     db_session,
+    #     name,
+    #     project,
+    #     tag,
+    #     hash_key,
+    #     format_,
+    # )
+    # await (
+    #     framework.utils.auth.verifier.AuthVerifier().query_project_resource_permissions(
+    #         mlrun.common.schemas.AuthorizationResourceTypes.function,
+    #         commons.project,
+    #         name,
+    #         mlrun.common.schemas.AuthorizationAction.read,
+    #         auth_info,
+    #     )
+    # )
+    # return func_summary
+
+
+

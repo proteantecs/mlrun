@@ -51,7 +51,7 @@ from mlrun.model_monitoring.db._schedules import ModelMonitoringSchedulesFileChi
 from mlrun.model_monitoring.writer import ModelMonitoringWriter
 from mlrun.platforms.iguazio import split_path
 from mlrun.utils import logger
-
+from datetime import datetime
 import framework.api.utils
 import framework.db.session
 import framework.utils.background_tasks
@@ -751,6 +751,15 @@ class MonitoringDeployment:
             project=self.project,
             labels=model_monitoring_labels_list,
         )
+
+    def function_summaries(self, start: datetime,
+                           names: typing.Optional[list[str]] = None,
+                           labels: typing.Optional[list[str]] = None,
+                           include_system: bool = True) -> list[mlrun.common.schemas.model_monitoring.FunctionSummary]:
+        """
+        Retrieve a list of all the model monitoring functions with their summaries.
+        """
+
 
     async def disable_model_monitoring(
         self,

@@ -63,3 +63,5 @@ from .model_endpoints import (
     ModelEndpointSpec,
     ModelEndpointStatus,
 )
+
+from .functions import FunctionSummary

@@ -3518,9 +3518,15 @@ sqlalchemy==2.0.40 \
     --hash=sha256:f6bacab7514de6146a1976bc56e1545bee247242fab030b89e5f70336fc0003e \
     --hash=sha256:fe147fcd85aaed53ce90645c91ed5fca0cc88a797314c70dfd9d35925bd5d106
     # via
+    #   -r dockerfiles/mlrun/requirements.txt
     #   -r extras-requirements.txt
     #   alembic
     #   mlflow
+    #   sqlalchemy-utils
+sqlalchemy-utils==0.41.2 \
+    --hash=sha256:85cf3842da2bf060760f955f8467b87983fb2e30f1764fd0e24a48307dc8ec6e \
+    --hash=sha256:bc599c8c3b3319e53ce6c5c3c471120bd325d0071fb6f38a10e924e3d07b9990
+    # via -r dockerfiles/mlrun/requirements.txt
 sqlparse==0.5.3 \
     --hash=sha256:09f67787f56a0b16ecdbde1bfc7f5d9c3371ca683cfeaa8e6ff60b4807ec9272 \
     --hash=sha256:cf2196ed3418f3ba5de6af7e82c694a9fbdbfecccdfc72e281548517081f16ca

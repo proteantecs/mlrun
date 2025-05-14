@@ -19,16 +19,12 @@ import pathlib
 
 import pytest
 import pytest_alembic.plugin.fixtures
-import sqlalchemy
 from pytest_alembic.tests import (  # noqa
     test_model_definitions_match_ddl,
     test_single_head_revision,
     test_up_down_consistency,
     test_upgrade,
 )
-from sqlalchemy.orm import sessionmaker
-
-import mlrun
 
 from framework.db.sqldb.models import Run
 
@@ -75,18 +71,6 @@ alembic_runner = pytest_alembic.plugin.fixtures.create_alembic_fixture(
     raw_config=copy.deepcopy(alembic_config)
 )
 
-
-@pytest.fixture
-def alembic_engine():
-    return sqlalchemy.create_engine(mlrun.mlconf.httpdb.dsn)
-
-
-@pytest.fixture
-def alembic_session(alembic_engine):
-    session_maker = sessionmaker()
-    session_maker.configure(bind=alembic_engine)
-    session = session_maker()
-    return session
 
 
 @pytest.mark.alembic

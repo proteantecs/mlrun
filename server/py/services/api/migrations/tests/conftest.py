@@ -13,16 +13,30 @@
 # limitations under the License.
 import pytest
 import sqlalchemy
+from sqlalchemy.orm import sessionmaker
 
 import mlrun
 
 
+@pytest.fixture
+def alembic_engine():
+    return sqlalchemy.create_engine(mlrun.mlconf.httpdb.dsn)
+
+
 @pytest.fixture(autouse=True)
-def truncate_all_tables():
-    engine = sqlalchemy.create_engine(mlrun.mlconf.httpdb.dsn)
-    with engine.connect() as conn:
+def drop_all_tables(alembic_engine):
+    """Start every test with an *empty* schema – no tables at all."""
+    with alembic_engine.connect() as conn:
         conn.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
         for (name,) in conn.exec_driver_sql("SHOW TABLES"):
-            conn.exec_driver_sql(f"TRUNCATE TABLE `{name}`")
+            conn.exec_driver_sql(f"DROP TABLE `{name}`")
         conn.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
     yield
+
+
+@pytest.fixture
+def alembic_session(alembic_engine, drop_all_tables):
+    session_maker = sessionmaker()
+    session_maker.configure(bind=alembic_engine)
+    session = session_maker()
+    return session

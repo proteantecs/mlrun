@@ -8180,7 +8180,7 @@ class SQLDB(DBInterface):
             subject=session.bind,
         )
         return inspector.has_table(
-            name=table_name,
+            table_name=table_name,
         )
 
     @staticmethod

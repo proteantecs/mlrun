@@ -255,7 +255,10 @@ class PackageTester:
             "Creating venv",
         )
         self._run_command(
-            "python -m venv test-venv --system-site-packages",
+            "python -m venv test-venv",
+        )
+        self._run_command(
+            "python -m pip install -r automation/requirements.txt && python -m pip install -e .",
         )
 
     def _clean_venv(self):

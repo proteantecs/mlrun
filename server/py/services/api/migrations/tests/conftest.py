@@ -11,32 +11,37 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+# server/py/services/api/migrations/tests/conftest.py
 import pytest
 import sqlalchemy
-from sqlalchemy.orm import sessionmaker
-
-import mlrun
-
-
-@pytest.fixture
-def alembic_engine():
-    return sqlalchemy.create_engine(mlrun.mlconf.httpdb.dsn)
 
 
 @pytest.fixture(autouse=True)
-def drop_all_tables(alembic_engine):
-    """Start every test with an *empty* schema – no tables at all."""
-    with alembic_engine.connect() as conn:
-        conn.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 0")
-        for (name,) in conn.exec_driver_sql("SHOW TABLES"):
-            conn.exec_driver_sql(f"DROP TABLE `{name}`")
-        conn.exec_driver_sql("SET FOREIGN_KEY_CHECKS = 1")
-    yield
+def _clean_schema_before_every_migration(
+    monkeypatch, alembic_runner, alembic_engine
+):
+    """
+    Patch alembic_runner.migrate_up_to so every call first drops all tables
+    in the current schema.  Works with the tests we import from
+    pytest_alembic.tests and with MySQL’s non-transactional DDL.
+    """
+    real_migrate = alembic_runner.migrate_up_to
 
+    def _drop_then_migrate(revision="heads", *args, **kwargs):
+        with alembic_engine.begin() as conn:
+            meta = sqlalchemy.MetaData()
+            meta.reflect(bind=conn)
 
-@pytest.fixture
-def alembic_session(alembic_engine, drop_all_tables):
-    session_maker = sessionmaker()
-    session_maker.configure(bind=alembic_engine)
-    session = session_maker()
-    return session
+            if meta.tables:
+                if conn.dialect.name == "mysql":
+                    conn.execute(sqlalchemy.text("SET FOREIGN_KEY_CHECKS=0"))
+
+                meta.drop_all(bind=conn)
+
+                if conn.dialect.name == "mysql":
+                    conn.execute(sqlalchemy.text("SET FOREIGN_KEY_CHECKS=1"))
+
+        # now do the real migration
+        return real_migrate(revision, *args, **kwargs)
+
+    monkeypatch.setattr(alembic_runner, "migrate_up_to", _drop_then_migrate)

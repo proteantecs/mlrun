@@ -255,7 +255,7 @@ class PackageTester:
             "Creating venv",
         )
         self._run_command(
-            "python -m venv test-venv",
+            "python -m venv test-venv --system-site-packages",
         )
 
     def _clean_venv(self):

@@ -72,7 +72,6 @@ alembic_runner = pytest_alembic.plugin.fixtures.create_alembic_fixture(
 )
 
 
-
 @pytest.mark.alembic
 def test_notification_params_to_secret_params(alembic_runner, alembic_session):
     alembic_runner.migrate_up_to(

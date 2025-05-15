@@ -2310,7 +2310,7 @@ class TestArtifacts(TestDatabaseBase):
 
         # validate we have 10 distinct projects in the new table
         new_artifact_projects = self._db_session.execute(
-            select([framework.db.sqldb.models.ArtifactV2.project.distinct()])
+            select(framework.db.sqldb.models.ArtifactV2.project.distinct())
         ).fetchall()
         assert len(new_artifact_projects) == 10
 

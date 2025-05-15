@@ -5456,11 +5456,19 @@ class SQLDB(DBInterface):
             session.query(ModelEndpoint)
             .options(
                 selectinload(ModelEndpoint.function).options(
-                    load_only("name", "state", "project", "uid"),
+                    load_only(
+                        Function.name, Function.state, Function.project, Function.uid
+                    ),
                     selectinload(Function.tags),
                 ),
                 selectinload(ModelEndpoint.model).options(
-                    load_only("key", "project", "iteration", "producer_id", "uid")
+                    load_only(
+                        ArtifactV2.key,
+                        ArtifactV2.project,
+                        ArtifactV2.iteration,
+                        ArtifactV2.producer_id,
+                        ArtifactV2.uid,
+                    )
                 ),
                 selectinload(ModelEndpoint.tags),
             )

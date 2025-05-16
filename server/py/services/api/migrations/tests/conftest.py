@@ -14,6 +14,24 @@
 # server/py/services/api/migrations/tests/conftest.py
 import pytest
 import sqlalchemy
+from sqlalchemy.orm import sessionmaker
+
+import mlrun
+
+
+@pytest.fixture
+def alembic_engine():
+    return sqlalchemy.create_engine(mlrun.mlconf.httpdb.dsn)
+
+
+@pytest.fixture
+def alembic_session(alembic_engine):
+    session_class = sessionmaker(bind=alembic_engine)
+    session = session_class()
+    try:
+        yield session
+    finally:
+        session.close()
 
 
 @pytest.fixture(autouse=True)

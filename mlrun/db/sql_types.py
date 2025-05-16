@@ -44,7 +44,7 @@ class MicroSecondDateTime(DateTime):
 
 
 class Blob(sqlalchemy.types.TypeDecorator):
-    impl = sqlalchemy.types.BLOB
+    impl = sqlalchemy.types.LargeBinary
     cache_ok = True
 
     def load_dialect_impl(

@@ -17,9 +17,7 @@ import sqlalchemy
 
 
 @pytest.fixture(autouse=True)
-def _clean_schema_before_every_migration(
-    monkeypatch, alembic_runner, alembic_engine
-):
+def _clean_schema_before_every_migration(monkeypatch, alembic_runner, alembic_engine):
     """
     Patch alembic_runner.migrate_up_to so every call first drops all tables
     in the current schema.  Works with the tests we import from

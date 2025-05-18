@@ -17,38 +17,38 @@ COVERAGE_ADDITION=${COVERAGE_ADDITION:-}
 
 set -e
 
-function cleanup {
-	docker kill migration-db
-}
-trap cleanup SIGHUP SIGINT SIGTERM EXIT
+#function cleanup {
+#	docker kill migration-db
+#}
+#trap cleanup SIGHUP SIGINT SIGTERM EXIT
 
 
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 ROOT_DIR="${SCRIPT_DIR}/../.."
-
-export MLRUN_HTTPDB__DSN="mysql+pymysql://root:pass@localhost:3306/mlrun"
-
-docker run \
-	--name=migration-db \
-	--rm \
-	-p 3306:3306 \
-	-e MYSQL_ROOT_PASSWORD="pass" \
-	-e MYSQL_ROOT_HOST="%" \
-	-e MYSQL_DATABASE="mlrun" \
-	-d \
-	gcr.io/iguazio/mlrun-mysql:8.0 \
-	--character-set-server=utf8 \
-	--collation-server=utf8_bin
-
-times=0
-while ! docker exec migration-db mysql --user=root --password=pass -e "status" > /dev/null 2>&1; do
-	echo "Waiting for database connection..."
-	sleep 2
-	if [ $times -ge 60 ]; then
-		exit 1
-	fi
-	times=$(( times + 1 ))
-done
+#
+#export MLRUN_HTTPDB__DSN="mysql+pymysql://root:pass@localhost:3306/mlrun"
+#
+#docker run \
+#	--name=migration-db \
+#	--rm \
+#	-p 3306:3306 \
+#	-e MYSQL_ROOT_PASSWORD="pass" \
+#	-e MYSQL_ROOT_HOST="%" \
+#	-e MYSQL_DATABASE="mlrun" \
+#	-d \
+#	gcr.io/iguazio/mlrun-mysql:8.0 \
+#	--character-set-server=utf8 \
+#	--collation-server=utf8_bin
+#
+#times=0
+#while ! docker exec migration-db mysql --user=root --password=pass -e "status" > /dev/null 2>&1; do
+#	echo "Waiting for database connection..."
+#	sleep 2
+#	if [ $times -ge 60 ]; then
+#		exit 1
+#	fi
+#	times=$(( times + 1 ))
+#done
 
 export PYTHONPATH=${ROOT}/server/py
 

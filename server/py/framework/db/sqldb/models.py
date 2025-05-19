@@ -336,11 +336,10 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
 
-
     class RunNotification(Base, mlrun.utils.db.BaseModel):
-        __tablename__ = f"runs_notifications"
+        __tablename__ = "runs_notifications"
         __table_args__ = (
-            UniqueConstraint("name", "parent_id", name=f"runs_notifications_uc"),
+            UniqueConstraint("name", "parent_id", name="runs_notifications_uc"),
         )
 
         id = Column(Integer, primary_key=True)
@@ -353,7 +352,7 @@ with warnings.catch_warnings():
         condition = Column(String(255), nullable=False)
         secret_params = Column("secret_params", JSON)
         params = Column("params", JSON)
-        parent_id = Column(Integer, ForeignKey(f"runs.id"))
+        parent_id = Column(Integer, ForeignKey("runs.id"))
 
         sent_time = Column(
             MicroSecondDateTime,
@@ -361,6 +360,7 @@ with warnings.catch_warnings():
         )
         status = Column(String(255), nullable=False)
         reason = Column(String(255), nullable=True)
+
     class Run(Base, mlrun.utils.db.HasStruct):
         __tablename__ = "runs"
         __table_args__ = (
@@ -816,9 +816,11 @@ with warnings.catch_warnings():
             return f"{self.id}"
 
     class AlertConfigNotification(Base, mlrun.utils.db.BaseModel):
-        __tablename__ = f"alert_configs_notifications"
+        __tablename__ = "alert_configs_notifications"
         __table_args__ = (
-            UniqueConstraint("name", "parent_id", name=f"_alert_configs_notifications_uc"),
+            UniqueConstraint(
+                "name", "parent_id", name="_alert_configs_notifications_uc"
+            ),
         )
 
         id = Column(Integer, primary_key=True)
@@ -831,7 +833,7 @@ with warnings.catch_warnings():
         condition = Column(String(255), nullable=False)
         secret_params = Column("secret_params", JSON)
         params = Column("params", JSON)
-        parent_id = Column(Integer, ForeignKey(f"alert_configs.id"))
+        parent_id = Column(Integer, ForeignKey("alert_configs.id"))
 
         sent_time = Column(
             MicroSecondDateTime,

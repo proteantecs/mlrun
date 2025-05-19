@@ -31,6 +31,7 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
+
 @pytest.fixture(scope="function")
 def pmr_mysql_container(pytestconfig, pmr_mysql_config):
     yield from pytest_mock_resources.get_container(
@@ -57,6 +58,7 @@ def pmr_mysql_config():
 def alembic_engine(mysql):
     os.environ["MLRUN_HTTPDB__DSN"] = str(mysql.engine.url)
     import mlrun
+
     mlrun.config.config.reload()
     return mysql.engine
 

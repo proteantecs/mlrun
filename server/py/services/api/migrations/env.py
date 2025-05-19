@@ -147,7 +147,6 @@ def run_migrations_online():
             context.run_migrations()
 
 
-
 def _run_if_flagged():
     """Only run migrations when the 'run_migrations' attribute is True."""
     if not config.attributes.get("run_migrations", False):

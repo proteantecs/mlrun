@@ -42,9 +42,6 @@ class Constants:
     )
 
 
-
-
-
 @pytest.fixture
 def alembic_runner(alembic_engine):
     alembic_config = {
@@ -56,6 +53,7 @@ def alembic_runner(alembic_engine):
     config = pytest_alembic.plugin.fixtures.Config.from_raw_config(alembic_config)
     with pytest_alembic.runner(config=config, engine=alembic_engine) as runner:
         yield runner
+
 
 @pytest.fixture
 def notifications_test_alembic_runner(alembic_engine):
@@ -89,7 +87,9 @@ def notifications_test_alembic_runner(alembic_engine):
 
 #
 @pytest.mark.alembic
-def test_notification_params_to_secret_params(notifications_test_alembic_runner, alembic_session):
+def test_notification_params_to_secret_params(
+    notifications_test_alembic_runner, alembic_session
+):
     notifications_test_alembic_runner.migrate_up_to(
         Constants.notifications_params_to_secret_params_revision
     )

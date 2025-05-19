@@ -14,10 +14,10 @@
 import os
 
 import pytest
-
-os.environ["MLRUN_HTTPDB__HTTP__DSN"] = "mysql+pymysql://root:pass@localhost:3306/mlrun"
 import pytest_mock_resources
 import sqlalchemy.orm
+
+os.environ["MLRUN_HTTPDB__HTTP__DSN"] = "mysql+pymysql://root:pass@localhost:3306/mlrun"
 
 mysql = pytest_mock_resources.create_mysql_fixture()
 

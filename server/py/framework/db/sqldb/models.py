@@ -336,6 +336,31 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
 
+
+    class RunNotification(Base, mlrun.utils.db.BaseModel):
+        __tablename__ = f"runs_notifications"
+        __table_args__ = (
+            UniqueConstraint("name", "parent_id", name=f"runs_notifications_uc"),
+        )
+
+        id = Column(Integer, primary_key=True)
+        project = Column(String(255))
+        name = Column(String(255), nullable=False)
+        kind = Column(String(255), nullable=False)
+        message = Column(String(255), nullable=False)
+        severity = Column(String(255), nullable=False)
+        when = Column(String(255), nullable=False)
+        condition = Column(String(255), nullable=False)
+        secret_params = Column("secret_params", JSON)
+        params = Column("params", JSON)
+        parent_id = Column(Integer, ForeignKey(f"runs.id"))
+
+        sent_time = Column(
+            MicroSecondDateTime,
+            nullable=True,
+        )
+        status = Column(String(255), nullable=False)
+        reason = Column(String(255), nullable=True)
     class Run(Base, mlrun.utils.db.HasStruct):
         __tablename__ = "runs"
         __table_args__ = (
@@ -345,8 +370,7 @@ with warnings.catch_warnings():
 
         Label = make_label(__tablename__)
         Tag = make_tag(__tablename__)
-        Notification = make_notification(__tablename__)
-
+        Notification = RunNotification
         id = Column(Integer, primary_key=True)
         uid = Column(String(255))
         project = Column(String(255))
@@ -791,14 +815,38 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.id}"
 
+    class AlertConfigNotification(Base, mlrun.utils.db.BaseModel):
+        __tablename__ = f"alert_configs_notifications"
+        __table_args__ = (
+            UniqueConstraint("name", "parent_id", name=f"_alert_configs_notifications_uc"),
+        )
+
+        id = Column(Integer, primary_key=True)
+        project = Column(String(255))
+        name = Column(String(255), nullable=False)
+        kind = Column(String(255), nullable=False)
+        message = Column(String(255), nullable=False)
+        severity = Column(String(255), nullable=False)
+        when = Column(String(255), nullable=False)
+        condition = Column(String(255), nullable=False)
+        secret_params = Column("secret_params", JSON)
+        params = Column("params", JSON)
+        parent_id = Column(Integer, ForeignKey(f"alert_configs.id"))
+
+        sent_time = Column(
+            MicroSecondDateTime,
+            nullable=True,
+        )
+        status = Column(String(255), nullable=False)
+        reason = Column(String(255), nullable=True)
+
     class AlertConfig(Base, mlrun.utils.db.BaseModel):
         __tablename__ = "alert_configs"
         __table_args__ = (
             UniqueConstraint("project", "name", name="_alert_configs_uc"),
         )
 
-        Notification = make_notification(__tablename__)
-
+        Notification = AlertConfigNotification
         id = Column(Integer, primary_key=True)
         name = Column(String(255), nullable=False)
         project = Column(String(255), nullable=False)

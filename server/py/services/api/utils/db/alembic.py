@@ -35,6 +35,7 @@ class AlembicUtil:
 
     def init_alembic(self):
         logger.debug("Performing alembic schema migrations")
+        self._alembic_config.attributes["run_migrations"] = True
         alembic.command.upgrade(self._alembic_config, "head")
 
     def is_schema_migration_needed(self):

@@ -147,7 +147,25 @@ def run_migrations_online():
             context.run_migrations()
 
 
-if context.is_offline_mode():
-    run_migrations_offline()
+
+def _run_if_flagged():
+    """Only run migrations when the 'run_migrations' attribute is True."""
+    if not config.attributes.get("run_migrations", False):
+        logger.info("Skipping Alembic migrations (run_migrations flag not set)")
+        return
+    else:
+        logger.info("Running Alembic migrations")
+
+    if context.is_offline_mode():
+        run_migrations_offline()
+    else:
+        run_migrations_online()
+
+
+# When Alembic CLI invokes env.py, __name__ == "__main__"
+if __name__ == "__main__":
+    # allow regular `alembic upgrade head` to run migrations:
+    config.attributes["run_migrations"] = True
+    _run_if_flagged()
 else:
-    run_migrations_online()
+    _run_if_flagged()

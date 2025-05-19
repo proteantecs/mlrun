@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import copy
 import json
 import logging
 import pathlib
@@ -43,44 +42,59 @@ class Constants:
     )
 
 
-alembic_config = {
-    "file": Constants.ini_file_path,
-    "before_revision_data": {
-        Constants.notifications_params_to_secret_params_revision: [
-            {
-                "__tablename__": Constants.notifications_table,
-                "project": Constants.notifications_params_to_secret_params_project,
-                "name": name,
-                "kind": "console",
-                "message": "test",
-                "severity": "info",
-                "when": "completed",
-                "params": json.dumps({"obj": {"x": 99}}),
-                "condition": "",
-                "status": "",
-            }
-            for name in ["notifications1"]
-        ],
-    },
-}
 
 
-# alembic modifies the original config for some reason, so in order to
-# access it during the tests we need to supply alembic with a copy.
-alembic_runner = pytest_alembic.plugin.fixtures.create_alembic_fixture(
-    raw_config=copy.deepcopy(alembic_config)
-)
+
+@pytest.fixture
+def alembic_runner(alembic_engine):
+    alembic_config = {
+        "file": Constants.ini_file_path,
+        "config": {
+            "run_migrations": True,
+        },
+    }
+    config = pytest_alembic.plugin.fixtures.Config.from_raw_config(alembic_config)
+    with pytest_alembic.runner(config=config, engine=alembic_engine) as runner:
+        yield runner
+
+@pytest.fixture
+def notifications_test_alembic_runner(alembic_engine):
+    alembic_config = {
+        "file": Constants.ini_file_path,
+        "config": {
+            "run_migrations": True,
+        },
+        "before_revision_data": {
+            Constants.notifications_params_to_secret_params_revision: [
+                {
+                    "__tablename__": Constants.notifications_table,
+                    "project": Constants.notifications_params_to_secret_params_project,
+                    "name": name,
+                    "kind": "console",
+                    "message": "test",
+                    "severity": "info",
+                    "when": "completed",
+                    "params": json.dumps({"obj": {"x": 99}}),
+                    "condition": "",
+                    "status": "",
+                }
+                for name in ["notifications1"]
+            ],
+        },
+    }
+    config = pytest_alembic.plugin.fixtures.Config.from_raw_config(alembic_config)
+    with pytest_alembic.runner(config=config, engine=alembic_engine) as runner:
+        yield runner
 
 
+#
 @pytest.mark.alembic
-def test_notification_params_to_secret_params(alembic_runner, alembic_session):
-    alembic_runner.migrate_up_to(
+def test_notification_params_to_secret_params(notifications_test_alembic_runner, alembic_session):
+    notifications_test_alembic_runner.migrate_up_to(
         Constants.notifications_params_to_secret_params_revision
     )
 
-    revision_data = alembic_config["before_revision_data"][
-        Constants.notifications_params_to_secret_params_revision
-    ]
+    revision_data = Constants.notifications_params_to_secret_params_revision
 
     for index, item in enumerate(
         alembic_session.query(Run.Notification.params, Run.Notification.secret_params)

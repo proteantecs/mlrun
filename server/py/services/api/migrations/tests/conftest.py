@@ -17,23 +17,18 @@ import pytest
 
 os.environ["MLRUN_HTTPDB__HTTP__DSN"] = "mysql+pymysql://root:pass@localhost:3306/mlrun"
 import sqlalchemy.orm
-from pytest_mock_resources import MysqlConfig, create_mysql_fixture
+import pytest_mock_resources
 
-MysqlConfig(
-    password="password",
-    ci_port=3306,
-    host="host.docker.internal",
-    port=3406,
-    username="root",
-    image="mysql:5.6",
-    root_database="dev",
-)
-mysql = create_mysql_fixture()
+mysql = pytest_mock_resources.create_mysql_fixture()
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="function")
+def pmr_mysql_container(pytestconfig, pmr_mysql_config):
+    yield from pytest_mock_resources.get_container(pytestconfig, pmr_mysql_config, interval=1, retries=60)
+
+@pytest.fixture(scope="function")
 def pmr_mysql_config():
-    return MysqlConfig(
+    return pytest_mock_resources.MysqlConfig(
         image="mysql:8.0",
         host="localhost",
         port=3306,

@@ -135,6 +135,11 @@ endif
 # Change to `--upgrade-package <package-name>` to upgrade only a specific package
 MLRUN_UV_UPGRADE_FLAG ?= --upgrade
 
+# absolute path to this Makefile
+THIS_MAKEFILE := $(abspath $(lastword $(MAKEFILE_LIST)))
+# its directory
+ROOT_DIR       := $(dir   $(THIS_MAKEFILE))
+
 .PHONY: help
 help: ## Display available commands
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
@@ -681,12 +686,19 @@ test-migrations-dockerized: build-test ## Run mlrun db migrations tests in docke
 		$(MLRUN_TEST_IMAGE_NAME_TAGGED) make test-migrations
 
 .PHONY: test-migrations
-test-migrations: clean ## Run mlrun db migrations tests
-	COVERAGE_FILE=$(COVERAGE_FILE) && \
-	COVERAGE_FILE=$${COVERAGE_FILE:-"tests/coverage_reports/migration_tests.coverage"} && \
-	$(SETUP_COVERAGE) && \
-	COVERAGE_ADDITION="$(COVERAGE_ADDITION)" ./automation/scripts/test_migration_mysql.sh && \
-	$(PRINT_COVERAGE_REPORT) ;
+test-migrations: #clean ## Run mlrun db migrations tests
+	@set -xe; \
+	export PYTHONUNBUFFERED=1; \
+	export PYTHONPATH="$${ROOT_DIR}/server/py"; \
+	python -u $${COVERAGE_ADDITION} \
+	  -m pytest -vvv \
+	  --capture=no \
+	  --disable-warnings \
+	  --durations=100 \
+	  -rf "${ROOT_DIR}/server/py/services/api/migrations/tests" \
+	  2>&1 | tee migration_tests.log; \
+	$(PRINT_COVERAGE_REPORT)
+
 
 
 .PHONY: test-system-dockerized

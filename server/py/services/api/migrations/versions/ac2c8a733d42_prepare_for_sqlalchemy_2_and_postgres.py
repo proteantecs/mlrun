@@ -19,9 +19,9 @@ Revises: 6925effc8fb1
 Create Date: 2025-05-13 20:02:34.836350
 """
 
-import sqlalchemy
-from sqlalchemy import inspect, text
 from alembic import op
+from sqlalchemy import inspect
+
 import mlrun.db.sql_types
 
 # revision identifiers, used by Alembic.
@@ -67,30 +67,36 @@ def upgrade():
     inspector = inspect(conn)
 
     # legacy FKs on artifacts_v2 tables
-    if 'artifacts_v2_labels' in inspector.get_table_names():
-        fk_names = [fk['name'] for fk in inspector.get_foreign_keys('artifacts_v2_labels')]
-        if 'artifacts_v2_labels_parent_fkey' in fk_names:
+    if "artifacts_v2_labels" in inspector.get_table_names():
+        fk_names = [
+            fk["name"] for fk in inspector.get_foreign_keys("artifacts_v2_labels")
+        ]
+        if "artifacts_v2_labels_parent_fkey" in fk_names:
             op.drop_constraint(
-                'artifacts_v2_labels_parent_fkey', 'artifacts_v2_labels', type_='foreignkey'
+                "artifacts_v2_labels_parent_fkey",
+                "artifacts_v2_labels",
+                type_="foreignkey",
             )
 
-    if 'artifacts_v2_tags' in inspector.get_table_names():
-        fk_names = [fk['name'] for fk in inspector.get_foreign_keys('artifacts_v2_tags')]
-        if 'artifacts_v2_tags_obj_id_fkey' in fk_names:
+    if "artifacts_v2_tags" in inspector.get_table_names():
+        fk_names = [
+            fk["name"] for fk in inspector.get_foreign_keys("artifacts_v2_tags")
+        ]
+        if "artifacts_v2_tags_obj_id_fkey" in fk_names:
             op.drop_constraint(
-                'artifacts_v2_tags_obj_id_fkey', 'artifacts_v2_tags', type_='foreignkey'
+                "artifacts_v2_tags_obj_id_fkey", "artifacts_v2_tags", type_="foreignkey"
             )
 
     # legacy unique on name
-    for tbl in ('feature_sets', 'feature_vectors', 'functions'):
+    for tbl in ("feature_sets", "feature_vectors", "functions"):
         if tbl in inspector.get_table_names():
             if dialect == "postgresql":
                 cons = inspector.get_unique_constraints(tbl)
-                if any(c['name'] == f"{tbl}_name_key" for c in cons):
+                if any(c["name"] == f"{tbl}_name_key" for c in cons):
                     op.drop_constraint(f"{tbl}_name_key", tbl, type_="unique")
             else:
                 idx = inspector.get_indexes(tbl)
-                if any(i['name'] == f"{tbl}_name_key" for i in idx):
+                if any(i["name"] == f"{tbl}_name_key" for i in idx):
                     op.drop_index(f"{tbl}_name_key", table_name=tbl)
 
 
@@ -101,40 +107,44 @@ def downgrade():
     inspector = inspect(conn)
 
     # restore unique on name
-    for tbl in ('feature_sets', 'feature_vectors', 'functions'):
+    for tbl in ("feature_sets", "feature_vectors", "functions"):
         if tbl in inspector.get_table_names():
             if dialect == "postgresql":
                 cons = inspector.get_unique_constraints(tbl)
-                if not any(c['name'] == f"{tbl}_name_key" for c in cons):
-                    op.create_unique_constraint(f"{tbl}_name_key", tbl, ['name'])
+                if not any(c["name"] == f"{tbl}_name_key" for c in cons):
+                    op.create_unique_constraint(f"{tbl}_name_key", tbl, ["name"])
             else:
                 idx = inspector.get_indexes(tbl)
-                if not any(i['name'] == f"{tbl}_name_key" for i in idx):
-                    op.create_index(f"{tbl}_name_key", tbl, ['name'], unique=True)
+                if not any(i["name"] == f"{tbl}_name_key" for i in idx):
+                    op.create_index(f"{tbl}_name_key", tbl, ["name"], unique=True)
 
     # restore FKs on artifacts_v2 if the columns exist
-    if 'artifacts_v2_labels' in inspector.get_table_names():
-        cols = [c['name'] for c in inspector.get_columns('artifacts_v2_labels')]
-        fk_names = [fk['name'] for fk in inspector.get_foreign_keys('artifacts_v2_labels')]
-        if 'parent_id' in cols and 'artifacts_v2_labels_parent_fkey' not in fk_names:
+    if "artifacts_v2_labels" in inspector.get_table_names():
+        cols = [c["name"] for c in inspector.get_columns("artifacts_v2_labels")]
+        fk_names = [
+            fk["name"] for fk in inspector.get_foreign_keys("artifacts_v2_labels")
+        ]
+        if "parent_id" in cols and "artifacts_v2_labels_parent_fkey" not in fk_names:
             op.create_foreign_key(
-                'artifacts_v2_labels_parent_fkey',
-                'artifacts_v2_labels',
-                'artifacts_v2',
-                ['parent_id'],
-                ['id'],
+                "artifacts_v2_labels_parent_fkey",
+                "artifacts_v2_labels",
+                "artifacts_v2",
+                ["parent_id"],
+                ["id"],
             )
 
-    if 'artifacts_v2_tags' in inspector.get_table_names():
-        cols = [c['name'] for c in inspector.get_columns('artifacts_v2_tags')]
-        fk_names = [fk['name'] for fk in inspector.get_foreign_keys('artifacts_v2_tags')]
-        if 'obj_id' in cols and 'artifacts_v2_tags_obj_id_fkey' not in fk_names:
+    if "artifacts_v2_tags" in inspector.get_table_names():
+        cols = [c["name"] for c in inspector.get_columns("artifacts_v2_tags")]
+        fk_names = [
+            fk["name"] for fk in inspector.get_foreign_keys("artifacts_v2_tags")
+        ]
+        if "obj_id" in cols and "artifacts_v2_tags_obj_id_fkey" not in fk_names:
             op.create_foreign_key(
-                'artifacts_v2_tags_obj_id_fkey',
-                'artifacts_v2_tags',
-                'artifacts_v2',
-                ['obj_id'],
-                ['id'],
+                "artifacts_v2_tags_obj_id_fkey",
+                "artifacts_v2_tags",
+                "artifacts_v2",
+                ["obj_id"],
+                ["id"],
             )
 
     # revert timestamp columns to DateTime

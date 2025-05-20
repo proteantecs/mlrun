@@ -30,6 +30,7 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
+
 @pytest.fixture(scope="function")
 def alembic_engine(postgres):
     os.environ["MLRUN_HTTPDB__DSN"] = str(postgres.engine.url)
@@ -41,23 +42,24 @@ def alembic_engine(postgres):
     engine = engine.execution_options(isolation_level="AUTOCOMMIT")
     return engine
 
-@pytest.fixture(scope="function")
-def create_postgres_container_fixture(pytestconfig, create_postgres_config_fixture):
-    yield from pytest_mock_resources.get_container(
-        pytestconfig=pytestconfig,
-        config=create_postgres_config_fixture,
-        interval=1,
-        retries=60,
-    )
-
 
 @pytest.fixture(scope="function")
-def create_postgres_config_fixture():
+def pmr_postgres_config():
     return pytest_mock_resources.PostgresConfig(
-        image="postgres:17.0",
+        image="postgres:17",
         host="localhost",
         port=5432,
         username="root",
         password="pass",
         root_database="mlrun",
+    )
+
+
+@pytest.fixture(scope="function")
+def pmr_postgres_container(pytestconfig, pmr_postgres_config):
+    yield from pytest_mock_resources.get_container(
+        pytestconfig=pytestconfig,
+        config=pmr_postgres_config,
+        interval=1,
+        retries=60,
     )

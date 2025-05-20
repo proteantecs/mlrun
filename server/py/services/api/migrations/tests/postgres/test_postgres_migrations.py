@@ -18,7 +18,7 @@ pytest_plugins = [
 ]
 
 
-from services.api.migrations.tests.base.migrations_tests import ( # noqa
+from services.api.migrations.tests.base.migrations_tests import (  # noqa
     test_model_definitions_match_ddl,
     test_single_head_revision,
     test_up_down_consistency,

@@ -42,6 +42,7 @@ def alembic_engine(mysql):
     engine = engine.execution_options(isolation_level="AUTOCOMMIT")
     return engine
 
+
 @pytest.fixture(scope="function")
 def pmr_mysql_container(pytestconfig, pmr_mysql_config):
     yield from pytest_mock_resources.get_container(

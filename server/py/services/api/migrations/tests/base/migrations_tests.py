@@ -35,7 +35,6 @@ class Constants:
     ini_file_path = str(
         pathlib.Path(__file__).absolute().parent.parent.parent.parent / "alembic.ini"
     )
-    print(ini_file_path)
     notifications_table = "runs_notifications"
 
     notifications_params_to_secret_params_revision = "eefc169f7633"
@@ -91,8 +90,6 @@ def notifications_test_alembic_runner(alembic_engine, before_revision_data):
         engine=alembic_engine,
     ) as runner:
         yield runner
-
-
 
 
 @pytest.mark.alembic

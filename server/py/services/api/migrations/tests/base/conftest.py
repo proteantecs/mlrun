@@ -28,7 +28,6 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 
-
 @pytest.fixture
 def alembic_session(alembic_engine):
     session_class = sqlalchemy.orm.sessionmaker(bind=alembic_engine)

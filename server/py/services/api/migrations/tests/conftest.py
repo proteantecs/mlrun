@@ -60,7 +60,10 @@ def alembic_engine(mysql):
     import mlrun
 
     mlrun.config.config.reload()
-    return mysql.engine
+    engine = mysql.engine
+
+    engine = engine.execution_options(isolation_level="AUTOCOMMIT")
+    return engine
 
 
 @pytest.fixture

@@ -577,7 +577,7 @@ test-publish: package-wheel ## Test python package publishing
 .PHONY: clean
 clean: ## Clean python package build artifacts
 	rm -rf build dist mlrun.egg-info
-	find . -name '*.pyc' -not -path "./venv" -exec rm {} \;
+	find . -type f -name '*.pyc' ! -path './venv/*' -delete
 
 .PHONY: test-dockerized
 test-dockerized: build-test ## Run mlrun tests in docker container
@@ -686,7 +686,7 @@ test-migrations-dockerized: build-test ## Run mlrun db migrations tests in docke
 		$(MLRUN_TEST_IMAGE_NAME_TAGGED) make test-migrations
 
 .PHONY: test-migrations
-test-migrations: #clean ## Run mlrun db migrations tests
+test-migrations: clean ## Run mlrun db migrations tests
 	@set -xe; \
 	export PYTHONUNBUFFERED=1; \
 	export PYTHONPATH="$${ROOT_DIR}/server/py"; \

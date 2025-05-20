@@ -17,7 +17,6 @@ import sys
 
 import pytest
 import pytest_mock_resources
-import sqlalchemy.orm
 
 mysql = pytest_mock_resources.create_mysql_fixture()
 
@@ -31,6 +30,17 @@ handler.setFormatter(formatter)
 
 logger.addHandler(handler)
 
+
+@pytest.fixture(scope="function")
+def alembic_engine(mysql):
+    os.environ["MLRUN_HTTPDB__DSN"] = str(mysql.engine.url)
+    import mlrun
+
+    mlrun.config.config.reload()
+    engine = mysql.engine
+
+    engine = engine.execution_options(isolation_level="AUTOCOMMIT")
+    return engine
 
 @pytest.fixture(scope="function")
 def pmr_mysql_container(pytestconfig, pmr_mysql_config):
@@ -52,25 +62,3 @@ def pmr_mysql_config():
         password="pass",
         root_database="mlrun",
     )
-
-
-@pytest.fixture(scope="function")
-def alembic_engine(mysql):
-    os.environ["MLRUN_HTTPDB__DSN"] = str(mysql.engine.url)
-    import mlrun
-
-    mlrun.config.config.reload()
-    engine = mysql.engine
-
-    engine = engine.execution_options(isolation_level="AUTOCOMMIT")
-    return engine
-
-
-@pytest.fixture
-def alembic_session(alembic_engine):
-    session_class = sqlalchemy.orm.sessionmaker(bind=alembic_engine)
-    session = session_class()
-    try:
-        yield session
-    finally:
-        session.close()

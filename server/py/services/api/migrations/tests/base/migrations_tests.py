@@ -33,8 +33,9 @@ log = logging.getLogger(__name__)
 
 class Constants:
     ini_file_path = str(
-        pathlib.Path(__file__).absolute().parent.parent.parent / "alembic.ini"
+        pathlib.Path(__file__).absolute().parent.parent.parent.parent / "alembic.ini"
     )
+    print(ini_file_path)
     notifications_table = "runs_notifications"
 
     notifications_params_to_secret_params_revision = "eefc169f7633"
@@ -91,27 +92,28 @@ def notifications_test_alembic_runner(alembic_engine, before_revision_data):
     ) as runner:
         yield runner
 
-#
-# #
-# @pytest.mark.alembic
-# def test_notification_params_to_secret_params(
-#     notifications_test_alembic_runner,
-#     alembic_session,
-#     before_revision_data,
-# ):
-#     notifications_test_alembic_runner.migrate_up_to(
-#         Constants.notifications_params_to_secret_params_revision
-#     )
-#
-#     for index, item in enumerate(
-#         alembic_session.query(Run.Notification.params, Run.Notification.secret_params)
-#         .filter_by(project=Constants.notifications_params_to_secret_params_project)
-#         .order_by(Run.Notification.id)
-#     ):
-#         assert not item.params
-#         assert (
-#             item.secret_params
-#             == before_revision_data[
-#                 Constants.notifications_params_to_secret_params_revision
-#             ][index]["params"]
-#         )
+
+
+
+@pytest.mark.alembic
+def test_notification_params_to_secret_params(
+    notifications_test_alembic_runner,
+    alembic_session,
+    before_revision_data,
+):
+    notifications_test_alembic_runner.migrate_up_to(
+        Constants.notifications_params_to_secret_params_revision
+    )
+
+    for index, item in enumerate(
+        alembic_session.query(Run.Notification.params, Run.Notification.secret_params)
+        .filter_by(project=Constants.notifications_params_to_secret_params_project)
+        .order_by(Run.Notification.id)
+    ):
+        assert not item.params
+        assert (
+            item.secret_params
+            == before_revision_data[
+                Constants.notifications_params_to_secret_params_revision
+            ][index]["params"]
+        )

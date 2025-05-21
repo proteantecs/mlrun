@@ -76,7 +76,7 @@ fi
 
 PRINT_COVERAGE_REPORT = if [ "$(RUN_COVERAGE)" = "true" ]; then \
     	echo "coverage report $$COVERAGE_FILE :"; \
-		COVERAGE_FILE=$$COVERAGE_FILE coverage report || true; \
+		COVERAGE_FILE=$$COVERAGE_FILE coverage report; \
 	fi
 
 # Verify the mount point to avoid deleting essential paths
@@ -691,7 +691,7 @@ test-migrations: clean ## Run mlrun db migrations tests
 	COVERAGE_FILE=$(COVERAGE_FILE) && \
 	COVERAGE_FILE=$${COVERAGE_FILE:-"tests/coverage_reports/migration_tests.coverage"} && \
 	$(SETUP_COVERAGE) && \
-	python -u $(COVERAGE_ADDITION)-m pytest -vvv \
+	python -u $(COVERAGE_ADDITION) -m pytest -vvv \
 	  --capture=no \
 	  --disable-warnings \
 	  --durations=100 \

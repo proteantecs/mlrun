@@ -40,6 +40,7 @@ class DateTime(sqlalchemy.types.TypeDecorator):
 
 
 class MicroSecondDateTime(DateTime):
+    cache_ok = True
     precision = 6
 
 

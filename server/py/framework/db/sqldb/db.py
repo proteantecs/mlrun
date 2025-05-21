@@ -6674,9 +6674,9 @@ class SQLDB(DBInterface):
 
     @staticmethod
     def create_partitions(
-            session: Session,
-            table_name: str,
-            partitioning_information_list: list[tuple[str, str]],
+        session: Session,
+        table_name: str,
+        partitioning_information_list: list[tuple[str, str]],
     ):
         """
         Creates partitions in the specified database table.
@@ -6739,10 +6739,7 @@ class SQLDB(DBInterface):
                 WHERE inhparent = :table_name::regclass
             """)
             rows = session.execute(query, {"table_name": table_name}).mappings().all()
-            existing_partitions = {
-                row["partition_name"]
-                for row in rows
-            }
+            existing_partitions = {row["partition_name"] for row in rows}
 
             # Filter partitions to add only those that are not in the table
             new_partitions = [

@@ -42,6 +42,8 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
   mariadb-client \
   curl \
   ca-certificates \
+  libpq-dev \
+  python3-dev \
  && rm -rf /var/lib/apt/lists/*
 
 # Remove system ensurepip from Python

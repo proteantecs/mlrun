@@ -687,11 +687,10 @@ test-migrations-dockerized: build-test ## Run mlrun db migrations tests in docke
 
 .PHONY: test-migrations
 test-migrations: clean ## Run mlrun db migrations tests
-	@set -xe; \
-	export PYTHONUNBUFFERED=1; \
-	export PYTHONPATH="$${ROOT_DIR}/server/py"; \
-	COVERAGE_FILE=$${COVERAGE_FILE:-"tests/coverage_reports/migration_tests.coverage"}; \
-	$(SETUP_COVERAGE); \
+	set -e; \
+	COVERAGE_FILE=$(COVERAGE_FILE) && \
+	COVERAGE_FILE=$${COVERAGE_FILE:-"tests/coverage_reports/migration_tests.coverage"} && \
+	$(SETUP_COVERAGE) && \
 	python -u $${COVERAGE_ADDITION} -m pytest -vvv \
 	  --capture=no \
 	  --disable-warnings \

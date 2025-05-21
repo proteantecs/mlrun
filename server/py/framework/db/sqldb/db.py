@@ -6674,9 +6674,9 @@ class SQLDB(DBInterface):
 
     @staticmethod
     def create_partitions(
-        session: Session,
-        table_name: str,
-        partitioning_information_list: list[tuple[str, str]],
+            session: Session,
+            table_name: str,
+            partitioning_information_list: list[tuple[str, str]],
     ):
         """
         Creates partitions in the specified database table.
@@ -6685,44 +6685,102 @@ class SQLDB(DBInterface):
         :param table_name: Name of the table where partitions will be created.
         :param partitioning_information_list: List of tuples, each containing:
             - partition_name: The name for the partition.
-            - partition_value: The "LESS THAN" boundary value for the partition.
+            - partition_value:
+                * MySQL: the "LESS THAN" boundary value for the partition.
+                * Postgres: a string "lower,upper" defining the range.
         """
-        query = text("""
-            SELECT PARTITION_DESCRIPTION
-            FROM INFORMATION_SCHEMA.PARTITIONS
-            WHERE TABLE_NAME = :table_name
-        """)
+        dialect = session.bind.dialect.name
 
-        existing_partition_values = {
-            row["PARTITION_DESCRIPTION"]
-            for row in session.execute(query, {"table_name": table_name})
-        }
+        if dialect == "mysql":
+            # Pull back existing partition descriptions
+            query = text("""
+                SELECT PARTITION_DESCRIPTION
+                FROM INFORMATION_SCHEMA.PARTITIONS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = :table_name
+            """)
+            rows = session.execute(query, {"table_name": table_name}).mappings().all()
+            existing_partition_values = {
+                row["PARTITION_DESCRIPTION"]
+                for row in rows
+                if row["PARTITION_DESCRIPTION"] is not None
+            }
 
-        # Filter partitions to add only those that are not in the table
-        new_partitions = [
-            f"PARTITION p{partition_name} VALUES LESS THAN ({partition_value})"
-            for partition_name, partition_value in partitioning_information_list
-            if str(partition_value) not in existing_partition_values
-        ]
+            # Filter partitions to add only those that are not in the table
+            new_partitions = [
+                f"PARTITION p{partition_name} VALUES LESS THAN ({partition_value})"
+                for partition_name, partition_value in partitioning_information_list
+                if str(partition_value) not in existing_partition_values
+            ]
 
-        if not new_partitions:
-            return
+            if not new_partitions:
+                return
 
-        logger.info(
-            "Creating new partitions for table",
-            table_name=table_name,
-            new_partitions=new_partitions,
-        )
+            logger.info(
+                "Creating new partitions for table %s: %s",
+                table_name,
+                new_partitions,
+            )
 
-        alter_table_template = f"""
-            ALTER TABLE {table_name}
-            ADD PARTITION (
-                {", ".join(new_partitions)}
-            );
-        """
+            alter_sql = f"""
+                ALTER TABLE {table_name}
+                ADD PARTITION (
+                    {', '.join(new_partitions)}
+                );
+            """
+            # No commit needed here, as DDL commands in MySQL cause an implicit commit
+            session.execute(text(alter_sql))
 
-        # No commit needed here, as DDL commands in MySQL cause an implicit commit
-        session.execute(text(alter_table_template))
+        elif dialect.startswith("postgres"):
+            # Pull back existing child partition names
+            query = text("""
+                SELECT inhrelid::regclass::text AS partition_name
+                FROM pg_inherits
+                WHERE inhparent = :table_name::regclass
+            """)
+            rows = session.execute(query, {"table_name": table_name}).mappings().all()
+            existing_partitions = {
+                row["partition_name"]
+                for row in rows
+            }
+
+            # Filter partitions to add only those that are not in the table
+            new_partitions = [
+                (partition_name, partition_value)
+                for partition_name, partition_value in partitioning_information_list
+                if partition_name not in existing_partitions
+            ]
+
+            if not new_partitions:
+                return
+
+            logger.info(
+                "Creating new Postgres partitions for table %s: %s",
+                table_name,
+                new_partitions,
+            )
+
+            # For each new partition, split the supplied "lower,upper" and emit DDL
+            for partition_name, partition_value in new_partitions:
+                bounds = [b.strip() for b in partition_value.split(",", 1)]
+                if len(bounds) != 2:
+                    raise ValueError(
+                        f"Postgres partition '{partition_name}' needs bounds as 'lower,upper', got '{partition_value}'"
+                    )
+                lower, upper = bounds
+                ddl = f"""
+                    ALTER TABLE {table_name}
+                    ADD PARTITION {partition_name}
+                    FOR VALUES FROM ({lower}) TO ({upper});
+                """
+                # No commit needed here, as DDL in Postgres also commits automatically
+                session.execute(text(ddl))
+
+        else:
+            logger.warning(
+                "Partitioning not implemented for dialect '%s', skipping",
+                dialect,
+            )
 
     @staticmethod
     def drop_partitions(

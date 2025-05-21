@@ -178,9 +178,9 @@ def mlrun_op(
     # TODO: remove in 1.10.0
     if rundb:
         warnings.warn(
-            "rundb parameter is deprecated and will be removed in 1.10.0. "
+            "rundb parameter is deprecated in 1.7.0 and will be removed in 1.10.0. "
             "use 'MLRUN_DBPATH' env instead.",
-            FutureWarning,
+            DeprecationWarning,
         )
 
     secrets = [] if secrets is None else secrets
@@ -503,7 +503,7 @@ def format_summary_from_kfp_run(kfp_run, project=None):
             dag[step_name]["kind"] = get_in(run, "metadata.labels.kind")
             error = get_in(run, "status.error")
             if error:
-                dag[step]["error"] = error
+                dag[step_name]["error"] = error
 
     short_run = {
         "graph": dag,

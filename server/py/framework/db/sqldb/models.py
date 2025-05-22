@@ -30,7 +30,6 @@ from sqlalchemy import (
     PrimaryKeyConstraint,
     Table,
     UniqueConstraint,
-    Uuid,
     event,
 )
 from sqlalchemy.ext.declarative import declarative_base
@@ -39,7 +38,13 @@ from sqlalchemy.orm import relationship
 import mlrun.common.schemas
 import mlrun.utils.db
 from mlrun.common.schemas import partition
-from mlrun.db.sql_types import Blob, DateTime, MicroSecondDateTime, Utf8BinText
+from mlrun.db.sql_types import (
+    Blob,
+    DateTime,
+    MicroSecondDateTime,
+    Utf8BinText,
+    UuidType,
+)
 
 Base = declarative_base()
 NULL = None  # Avoid flake8 issuing warnings when comparing in filter
@@ -927,7 +932,7 @@ with warnings.catch_warnings():
         __tablename__ = "model_endpoints"
 
         id = Column(Integer, primary_key=True)
-        uid = Column(Uuid, default=lambda: uuid.uuid4().hex, unique=True)
+        uid = Column(UuidType, default=lambda: uuid.uuid4().hex, unique=True)
         name = Column(Utf8BinText)
         endpoint_type = Column(Integer, nullable=False)
         project = Column(Utf8BinText)

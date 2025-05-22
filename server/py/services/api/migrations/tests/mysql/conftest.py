@@ -19,7 +19,7 @@ import pytest_mock_resources
 mysql = pytest_mock_resources.create_mysql_fixture()
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def alembic_engine(mysql):
     os.environ["MLRUN_HTTPDB__DSN"] = str(mysql.engine.url)
     import mlrun
@@ -31,7 +31,7 @@ def alembic_engine(mysql):
     return engine
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def pmr_mysql_container(pytestconfig, pmr_mysql_config):
     yield from pytest_mock_resources.get_container(
         pytestconfig=pytestconfig,
@@ -41,7 +41,7 @@ def pmr_mysql_container(pytestconfig, pmr_mysql_config):
     )
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def pmr_mysql_config():
     return pytest_mock_resources.MysqlConfig(
         image="mysql:8.0",

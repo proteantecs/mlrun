@@ -15,7 +15,7 @@ import pytest
 import sqlalchemy.orm
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def alembic_session(alembic_engine):
     session_class = sqlalchemy.orm.sessionmaker(bind=alembic_engine)
     session = session_class()

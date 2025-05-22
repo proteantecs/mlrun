@@ -52,7 +52,8 @@ target_metadata = framework.db.sqldb.models.Base.metadata
 config.set_main_option("sqlalchemy.url", mlrun.mlconf.httpdb.dsn)
 
 
-# This function was added as part of the migration to SQLAlchemy 2.0 and is intended to suppress redundant alembic migrations
+# This function was added as part of the migration to SQLAlchemy 2.0 and is intended
+# to suppress redundant alembic migrations
 def compare_type(
     context: MigrationContext,
     inspected_column: Column[Any],

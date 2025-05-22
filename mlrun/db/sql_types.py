@@ -68,7 +68,7 @@ class Utf8BinText(sqlalchemy.types.TypeDecorator):
         if dialect.name == "mysql":
             # MySQL: full‐Unicode TEXT with utf8_bin collation
             return dialect.type_descriptor(
-                sqlalchemy.dialects.mysql.TEXT(collation="utf8_bin")
+                sqlalchemy.dialects.mysql.TEXT(collation="utf8_bin", length=255)
             )
         elif dialect.name == "postgresql":
             # PostgreSQL: TEXT with a binary‐style collation

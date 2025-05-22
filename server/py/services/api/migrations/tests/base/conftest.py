@@ -17,9 +17,9 @@ import pytest
 import sqlalchemy.orm
 
 
-
 def pytest_configure(config):
-    logging.getLogger('faker.factory').setLevel(logging.WARNING)
+    logging.getLogger("faker.factory").setLevel(logging.WARNING)
+
 
 @pytest.fixture(scope="function")
 def alembic_session(alembic_engine):

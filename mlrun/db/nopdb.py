@@ -31,6 +31,7 @@ from .base import RunDBInterface
 
 class NopDB(RunDBInterface):
     db_path_missing_warning_logged = False
+
     def __init__(self, url=None, *args, **kwargs):
         self.url = url
 
@@ -48,7 +49,7 @@ class NopDB(RunDBInterface):
                     "Could not detect path to API server, not connected to API server!"
                 )
                 logger.warning(env_var_message)
-                db_path_missing_warning_logged = True
+                self.db_path_missing_warning_logged = True
 
             return
 

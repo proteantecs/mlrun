@@ -16,6 +16,8 @@ import os
 import pytest
 import pytest_mock_resources
 
+mysql = pytest_mock_resources.create_mysql_fixture()
+
 
 @pytest.fixture
 def alembic_engine(mysql):

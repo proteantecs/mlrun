@@ -27,9 +27,11 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    PrimaryKeyConstraint,
     Table,
     UniqueConstraint,
-    event, Uuid, PrimaryKeyConstraint,
+    Uuid,
+    event,
 )
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
@@ -841,7 +843,6 @@ with warnings.catch_warnings():
         @full_object.setter
         def full_object(self, value):
             self._full_object = json.dumps(value, default=str)
-
 
     class AlertActivation(Base):
         __tablename__ = "alert_activations"

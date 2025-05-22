@@ -137,9 +137,9 @@ aiosmtplib==3.0.2 \
     # via
     #   -r dockerfiles/mlrun-api/requirements.txt
     #   -r requirements.txt
-alembic==1.15.2 \
-    --hash=sha256:1c72391bbdeffccfe317eefba686cb9a3c078005478885413b95c3b26c57a8a7 \
-    --hash=sha256:2e76bd916d547f6900ec4bb5a90aeac1485d2c92536923d0b138c02b126edc53
+alembic==1.16.1 \
+    --hash=sha256:0cdd48acada30d93aa1035767d67dff25702f8de74d7c3919f2e8492c8db2e67 \
+    --hash=sha256:43d37ba24b3d17bc1eb1024fe0f51cd1dc95aeb5464594a02c6bb9ca9864bfa4
     # via
     #   -r dockerfiles/mlrun-api/requirements.txt
     #   mlflow
@@ -1287,9 +1287,9 @@ google-api-python-client==1.12.11 ; python_full_version < '3.11' \
     --hash=sha256:1b4bd42a46321e13c0542a9e4d96fa05d73626f07b39f83a73a947d70ca706a9 \
     --hash=sha256:7e0a1a265c8d3088ee1987778c72683fcb376e32bada8d7767162bd9c503fd9b
     # via kfp
-google-auth==2.40.1 \
-    --hash=sha256:58f0e8416a9814c1d86c9b7f6acf6816b51aba167b2c76821965271bac275540 \
-    --hash=sha256:ed4cae4f5c46b41bae1d19c036e06f6c371926e97b19e816fc854eff811974ee
+google-auth==2.40.2 \
+    --hash=sha256:a33cde547a2134273226fa4b853883559947ebe9207521f7afc707efbf690f58 \
+    --hash=sha256:f7e568d42eedfded58734f6a60c58321896a621f7c116c411550a4b4a13da90b
     # via
     #   databricks-sdk
     #   gcsfs
@@ -2506,9 +2506,9 @@ mlflow-skinny==2.22.0 \
     --hash=sha256:774b58970038990650486cd934d46b7038fc390682c3bde70b4e5106f6857cce \
     --hash=sha256:9efc39454f6cc3433e7d804c3df8dab4fbba1abe504c52c05f00ef1d0696fef5
     # via mlflow
-mlrun-pipelines-kfp-common==0.5.3 \
-    --hash=sha256:0464aae1b54a37c6579312f1fa252fe063cbbc983ccd03f3d6acc1d53cef646e \
-    --hash=sha256:935a0229709f6d18b0ab10cd25014ea775dac727994c0ddf7518d0a83eeac772
+mlrun-pipelines-kfp-common==0.5.5 \
+    --hash=sha256:57439162b2c94c245b987196bb33e2bb232692ea36632212e0ba87a2b95ea5e7 \
+    --hash=sha256:fbd07c3c16857c854a2755bde2210de720f77dc6153bf8b1dc5b53d433e2c6fe
     # via -r requirements.txt
 mlrun-pipelines-kfp-v1-8==0.5.2 \
     --hash=sha256:710da9cac69a128fc197a73573efcabd366e74f15952b4fdf89e8b62bd878ab9 \
@@ -4688,6 +4688,7 @@ tomli==2.2.1 ; python_full_version <= '3.11' \
     --hash=sha256:ece47d672db52ac607a3d9599a9d48dcb2f2f735c6c2d1f34130085bb12b112a \
     --hash=sha256:f4039b9cbc3048b2416cc57ab3bda989a6fcf9b36cf8937f01a6e731b64f80d7
     # via
+    #   alembic
     #   black
     #   build
     #   coverage

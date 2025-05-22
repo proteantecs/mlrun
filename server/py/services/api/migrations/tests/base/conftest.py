@@ -21,7 +21,7 @@ def pytest_configure(config):
     logging.getLogger("faker.factory").setLevel(logging.WARNING)
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def alembic_session(alembic_engine):
     session_class = sqlalchemy.orm.sessionmaker(bind=alembic_engine)
     session = session_class()

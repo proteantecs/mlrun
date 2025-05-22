@@ -21,7 +21,7 @@ import mlrun
 postgres = pytest_mock_resources.create_postgres_fixture()
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def alembic_engine(postgres):
     os.environ["MLRUN_HTTPDB__DSN"] = str(postgres.engine.url)
     mlrun.mlconf.reload()
@@ -31,7 +31,7 @@ def alembic_engine(postgres):
     return engine
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def pmr_postgres_config():
     return pytest_mock_resources.PostgresConfig(
         image="postgres:17",
@@ -43,7 +43,7 @@ def pmr_postgres_config():
     )
 
 
-@pytest.fixture(scope="function")
+@pytest.fixture
 def pmr_postgres_container(pytestconfig, pmr_postgres_config):
     yield from pytest_mock_resources.get_container(
         pytestconfig=pytestconfig,

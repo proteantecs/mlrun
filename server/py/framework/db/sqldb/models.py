@@ -181,7 +181,7 @@ def make_notification(table):
         #   start, therefore we need to separate the state from the notification itself (e.g. this table can be  table
         #   with notification_id, state, when, last_sent, etc.). This will require some refactoring in the code.
         sent_time = Column(
-            MicroSecondDateTime,
+            DateTime,
             nullable=True,
         )
         status = Column(Utf8BinText, nullable=False)
@@ -209,7 +209,7 @@ with warnings.catch_warnings():
         key = Column(Utf8BinText)
         project = Column(Utf8BinText)
         uid = Column(Utf8BinText)
-        updated = Column(MicroSecondDateTime)
+        updated = Column(DateTime)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
         body = Column(Blob)
 
@@ -258,11 +258,11 @@ with warnings.catch_warnings():
         best_iteration = Column(BOOLEAN, default=False, index=True)
         uid = Column(Utf8BinText)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         updated = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         _full_object = Column("object", Blob)
@@ -321,7 +321,7 @@ with warnings.catch_warnings():
         state = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
         body = Column(Blob)
-        updated = Column(MicroSecondDateTime)
+        updated = Column(DateTime)
 
         labels = relationship(
             Label,
@@ -358,9 +358,9 @@ with warnings.catch_warnings():
         state = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
         body = Column(Blob)
-        start_time = Column(MicroSecondDateTime)
+        start_time = Column(DateTime)
         end_time = Column(MicroSecondDateTime)
-        updated = Column(MicroSecondDateTime, default=datetime.utcnow)
+        updated = Column(DateTime, default=datetime.utcnow)
         # requested logs column indicates whether logs were requested for this run
         # None - old runs prior to the column addition, logs were already collected for them, so no need to collect them
         # False - logs were not requested for this run
@@ -394,11 +394,11 @@ with warnings.catch_warnings():
         name = Column(Utf8BinText, nullable=False)
         project = Column(Utf8BinText, nullable=False)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         updated = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         state = Column(Utf8BinText)
@@ -420,7 +420,7 @@ with warnings.catch_warnings():
         kind = Column(Utf8BinText)
         desired_state = Column(Utf8BinText)
         state = Column(Utf8BinText)
-        creation_time = Column(MicroSecondDateTime)
+        creation_time = Column(DateTime)
         cron_trigger_str = Column(Utf8BinText)
         last_run_uri = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
@@ -432,7 +432,7 @@ with warnings.catch_warnings():
             passive_deletes=True,
         )
         concurrency_limit = Column(Integer, nullable=False)
-        next_run_time = Column(MicroSecondDateTime)
+        next_run_time = Column(DateTime)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
@@ -485,7 +485,7 @@ with warnings.catch_warnings():
         # leaving the column as is to prevent redundant migration
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
         _full_object = Column("spec", Blob)
-        created = Column(MicroSecondDateTime, default=datetime.utcnow)
+        created = Column(DateTime, default=datetime.utcnow)
         default_function_node_selector = Column("default_function_node_selector", JSON)
         state = Column(Utf8BinText)
         users = relationship(User, secondary=project_users)
@@ -571,11 +571,11 @@ with warnings.catch_warnings():
         name = Column(Utf8BinText)
         project = Column(Utf8BinText)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         updated = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         state = Column(Utf8BinText)
@@ -635,11 +635,11 @@ with warnings.catch_warnings():
         name = Column(Utf8BinText)
         project = Column(Utf8BinText)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         updated = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         state = Column(Utf8BinText)
@@ -684,11 +684,11 @@ with warnings.catch_warnings():
         name = Column(Utf8BinText)
         index = Column(Integer)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         updated = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
 
@@ -714,7 +714,7 @@ with warnings.catch_warnings():
         id = Column(Integer, primary_key=True)
         version = Column(Utf8BinText)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
 
@@ -755,7 +755,7 @@ with warnings.catch_warnings():
         page_size = Column(Integer)
         kwargs = Column(JSON)
         last_accessed = Column(
-            MicroSecondDateTime,  # TODO: change to `datetime`, see ML-6921
+            DateTime,  # TODO: change to `datetime`, see ML-6921
             default=lambda: datetime.now(timezone.utc),
         )
 
@@ -769,11 +769,11 @@ with warnings.catch_warnings():
         id = Column(Integer, primary_key=True)
         count = Column(Integer)
         created = Column(
-            MicroSecondDateTime,  # TODO: change to `datetime`, see ML-6921
+            DateTime,  # TODO: change to `datetime`, see ML-6921
             default=lambda: datetime.now(timezone.utc),
         )
         last_updated = Column(
-            MicroSecondDateTime,  # TODO: change to `datetime`, see ML-6921
+            DateTime,  # TODO: change to `datetime`, see ML-6921
             default=None,
         )
         active = Column(BOOLEAN, default=False)
@@ -933,11 +933,11 @@ with warnings.catch_warnings():
         project = Column(Utf8BinText)
         body = Column(Blob)
         created = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         updated = Column(
-            MicroSecondDateTime,
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
         function_id = Column(

@@ -16,14 +16,14 @@ import os
 import pytest
 import pytest_mock_resources
 
+import mlrun
+
 postgres = pytest_mock_resources.create_postgres_fixture()
 
 
 @pytest.fixture(scope="function")
 def alembic_engine(postgres):
     os.environ["MLRUN_HTTPDB__DSN"] = str(postgres.engine.url)
-    import mlrun
-
     mlrun.mlconf.reload()
     engine = postgres.engine
 

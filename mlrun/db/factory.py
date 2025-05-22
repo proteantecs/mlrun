@@ -23,8 +23,6 @@ from mlrun.utils import logger
 class RunDBFactory(
     metaclass=mlrun.utils.singleton.AbstractSingleton,
 ):
-    db_path_missing_warning_logged = False
-
     def __init__(self):
         self._run_db = None
         self._last_db_url = None
@@ -45,7 +43,7 @@ class RunDBFactory(
 
         self._last_db_url = url
 
-        if "://" not in str(url) and not self.db_path_missing_warning_logged:
+        if "://" not in str(url):
             logger.warning(
                 "Could not detect path to API server, not connected to API server!"
             )
@@ -53,7 +51,6 @@ class RunDBFactory(
                 "MLRUN_DBPATH is misconfigured. Set this environment variable to the URL of the API server"
                 " in order to connect"
             )
-            self.db_path_missing_warning_logged = False
             self._run_db = self._rundb_container.nop(url)
 
         else:

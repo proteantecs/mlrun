@@ -16,14 +16,14 @@ import os
 import pytest
 import pytest_mock_resources
 
+import mlrun
+
 mysql = pytest_mock_resources.create_mysql_fixture()
 
 
 @pytest.fixture(scope="function")
 def alembic_engine(mysql):
     os.environ["MLRUN_HTTPDB__DSN"] = str(mysql.engine.url)
-    import mlrun
-
     mlrun.mlconf.reload()
     engine = mysql.engine
 

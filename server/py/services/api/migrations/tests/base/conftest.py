@@ -11,21 +11,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import logging
-import sys
-
 import pytest
 import sqlalchemy.orm
-
-logger = logging.getLogger("pytest_mock_resources")
-logger.setLevel(logging.DEBUG)
-
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
-handler.setFormatter(formatter)
-
-logger.addHandler(handler)
 
 
 @pytest.fixture

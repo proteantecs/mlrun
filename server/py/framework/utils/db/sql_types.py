@@ -16,22 +16,20 @@
 from .mysql import MySQLUtil
 
 
-class SQLTypesUtil:
-    class _Collations:
-        # with sqlite we use the default collation
-        sqlite = None
-        mysql = "utf8mb3_bin"
+# TODO: Remove this class and usages once old alembic migrations that use it are squashed.
+class Collations:
+    sqlite = None
+    mysql = "utf8mb3_bin"
 
     @classmethod
     def collation(cls):
-        return cls._return_type(cls._Collations)
-
-    def _return_type(type_cls: type, *args, **kwargs):
         mysql_dsn_data = MySQLUtil.get_mysql_dsn_data()
         if mysql_dsn_data:
-            # If the mysql attribute is callable (as it is for _Datetime), call it with extra arguments.
-            if callable(getattr(type_cls, "mysql", None)):
-                return type_cls.mysql(*args, **kwargs)
-            # Otherwise just return the attribute (as for _Collations or _Timestamp).
-            return type_cls.mysql
-        return type_cls.sqlite
+            return cls.mysql
+        return cls.sqlite
+
+
+class SQLTypesUtil:
+    @classmethod
+    def collation(cls):
+        return Collations.collation()

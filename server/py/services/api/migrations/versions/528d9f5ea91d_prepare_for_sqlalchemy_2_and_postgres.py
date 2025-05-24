@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Add missing on cascade delete to tag,tag_v2,artifact_tag and notification tables
+"""Add missing on cascade delete to tag, tag_v2, artifact_tag and notification tables
 
 Revision ID: 528d9f5ea91d
 Revises: 6925effc8fb1
 Create Date: 2025-05-22 19:11:42.445053
-
 """
 
 from alembic import op
@@ -43,7 +42,7 @@ def upgrade():
         type_="foreignkey",
     )
     op.create_foreign_key(
-        None,
+        "alert_configs_notifications_parent_fk",
         "alert_configs_notifications",
         "alert_configs",
         ["parent_id"],
@@ -77,7 +76,7 @@ def upgrade():
         type_="foreignkey",
     )
     op.create_foreign_key(
-        None,
+        "runs_notifications_parent_fk",
         "runs_notifications",
         "runs",
         ["parent_id"],
@@ -102,7 +101,7 @@ def upgrade():
 
 def downgrade():
     op.drop_constraint(
-        None,
+        "alert_configs_notifications_parent_fk",
         "alert_configs_notifications",
         type_="foreignkey",
     )
@@ -134,7 +133,7 @@ def downgrade():
     )
 
     op.drop_constraint(
-        None,
+        "runs_notifications_parent_fk",
         "runs_notifications",
         type_="foreignkey",
     )

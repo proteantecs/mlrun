@@ -53,8 +53,6 @@ from mlrun.db.sql_types import (
 Base = declarative_base()
 NULL = None  # Avoid flake8 issuing warnings when comparing in filter
 
-_tagged = None
-_labeled = None
 _with_notifications = None
 _classes = None
 
@@ -200,22 +198,18 @@ class TagV2Mixin:
         )
 
 
-def make_artifact_tag(table):
+def make_artifact_tag(cls):
     """
     For artifacts, we cannot use tag_v2 because different artifacts with the same key can have the same tag.
     therefore we need to use the obj_id as the unique constraint.
     """
+    table = cls.__tablename__
 
     class ArtifactTag(Base, mlrun.utils.db.BaseModel):
         __tablename__ = f"{table}_tags"
         __table_args__ = (
             UniqueConstraint("project", "name", "obj_id", name=f"_{table}_tags_uc"),
-            Index(
-                f"idx_{__tablename__}_project_name_obj_name",
-                "project",
-                "name",
-                "obj_name",
-            ),
+            Index(f"idx_{table}_project_name_obj_name", "project", "name", "obj_name"),
         )
 
         id = Column(Integer, primary_key=True)
@@ -224,13 +218,32 @@ def make_artifact_tag(table):
         obj_id = Column(Integer, ForeignKey(f"{table}.id", ondelete="CASCADE"))
         obj_name = Column(Utf8BinText)
 
+        parent_rel = relationship(cls, back_populates="artifact_tags")
+
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
 
     return ArtifactTag
 
 
-def make_notification(table):
+class ArtifactTagMixin:
+    @declared_attr
+    def ArtifactTag(cls):  # noqa: N805 N802
+        return make_artifact_tag(cls)
+
+    @declared_attr
+    def artifact_tags(cls):  # noqa: N805
+        return relationship(
+            cls.ArtifactTag,
+            back_populates="parent_rel",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        )
+
+
+def make_notification(cls):
+    table = cls.__tablename__
+
     class Notification(Base, mlrun.utils.db.BaseModel):
         __tablename__ = f"{table}_notifications"
         __table_args__ = (
@@ -248,20 +261,33 @@ def make_notification(table):
         secret_params = Column("secret_params", JSON)
         params = Column("params", JSON)
         parent_id = Column(Integer, ForeignKey(f"{table}.id"))
+        parent_rel = relationship(cls, back_populates="notifications")
 
         # TODO: Separate table for notification state.
         #   Currently, we are only supporting one notification being sent per DB row (either on completion or on error).
         #   In the future, we might want to support multiple notifications per DB row, and we might want to support on
         #   start, therefore we need to separate the state from the notification itself (e.g. this table can be  table
         #   with notification_id, state, when, last_sent, etc.). This will require some refactoring in the code.
-        sent_time = Column(
-            DateTime,
-            nullable=True,
-        )
+        sent_time = Column(DateTime, nullable=True)
         status = Column(Utf8BinText, nullable=False)
         reason = Column(Utf8BinText, nullable=True)
 
     return Notification
+
+
+class NotificationMixin:
+    @declared_attr
+    def Notification(cls):  # noqa: N805 N802
+        return make_notification(cls)
+
+    @declared_attr
+    def notifications(cls):  # noqa: N805
+        return relationship(
+            cls.Notification,
+            back_populates="parent_rel",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        )
 
 
 class LabelMixin:
@@ -302,7 +328,7 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.key}/{self.uid}"
 
-    class ArtifactV2(Base, LabelMixin, TagMixin, mlrun.utils.db.BaseModel):
+    class ArtifactV2(Base, LabelMixin, ArtifactTagMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "artifacts_v2"
         __table_args__ = (
             UniqueConstraint("uid", "project", "key", name="_artifacts_v2_uc"),
@@ -390,14 +416,12 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
 
-    class Run(Base, LabelMixin, TagMixin, mlrun.utils.db.HasStruct):
+    class Run(Base, LabelMixin, TagMixin, NotificationMixin, mlrun.utils.db.HasStruct):
         __tablename__ = "runs"
         __table_args__ = (
             UniqueConstraint("uid", "project", "iteration", name="_runs_uc"),
             Index("idx_runs_project_id", "id", "project", unique=True),
         )
-
-        Notification = make_notification(__tablename__)
 
         id = Column(Integer, primary_key=True)
         uid = Column(Utf8BinText)
@@ -415,8 +439,6 @@ with warnings.catch_warnings():
         # False - logs were not requested for this run
         # True - logs were requested for this run
         requested_logs = Column(BOOLEAN, default=False, index=True)
-
-        notifications = relationship(Notification, cascade="all, delete-orphan")
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.uid}/{self.iteration}"
@@ -769,19 +791,16 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.id}"
 
-    class AlertConfig(Base, mlrun.utils.db.BaseModel):
+    class AlertConfig(Base, NotificationMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "alert_configs"
         __table_args__ = (
             UniqueConstraint("project", "name", name="_alert_configs_uc"),
         )
 
-        Notification = make_notification(__tablename__)
-
         id = Column(Integer, primary_key=True)
         name = Column(Utf8BinText, nullable=False)
         project = Column(Utf8BinText, nullable=False)
 
-        notifications = relationship(Notification, cascade="all, delete-orphan")
         alerts = relationship(AlertState, cascade="all, delete-orphan")
 
         _full_object = Column("object", JSON)

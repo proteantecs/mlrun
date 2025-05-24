@@ -64,7 +64,7 @@ from mlrun.common.schemas.feature_store import (
 )
 from mlrun.common.schemas.model_monitoring import EndpointType, ModelEndpointSchema
 from mlrun.config import config
-from mlrun.db.sql_types import Dialects
+from mlrun.common.db.sql_session import Dialects
 from mlrun.errors import err_to_str
 from mlrun.lists import ArtifactList, RunList
 from mlrun.model import RunObject

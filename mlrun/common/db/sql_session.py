@@ -19,8 +19,8 @@ from sqlalchemy.orm import (
     sessionmaker as SessionMaker,  # noqa: N812 - `sessionmaker` is a class
 )
 
+from mlrun.common.types import StrEnum
 from mlrun.config import config
-from mlrun.db.sql_types import Dialects
 
 # TODO: wrap the following functions in a singleton class
 _engines: dict[str, Engine] = {}
@@ -78,3 +78,9 @@ def _init_engine(dsn=None):
 def _init_session_maker(dsn):
     global _session_makers
     _session_makers[dsn] = SessionMaker(bind=get_engine(dsn=dsn))
+
+
+class Dialects(StrEnum):
+    MYSQL = "mysql"
+    POSTGRESQL = "postgresql"
+    SQLITE = "sqlite"

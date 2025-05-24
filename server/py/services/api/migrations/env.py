@@ -29,11 +29,11 @@ from sqlalchemy.sql.type_api import TypeEngine
 import mlrun.utils
 from mlrun.db.sql_types import (
     DateTime,
-    Dialects,
     MicroSecondDateTime,
     Utf8BinText,
     UuidType,
 )
+from mlrun.common.db.sql_session import Dialects
 
 import framework.db.sqldb.models
 

@@ -144,11 +144,11 @@ def make_tag(parent_cls):
 
 class TagMixin:
     @declared_attr
-    def Tag(cls): # noqa: N805 N802
+    def Tag(cls):  # noqa: N805 N802
         return make_tag(cls)
 
     @declared_attr
-    def tags(cls): # noqa: N805
+    def tags(cls):  # noqa: N805
         return relationship(
             cls.Tag,
             back_populates="parent_rel",
@@ -187,11 +187,11 @@ def make_tag_v2(parent_cls):
 
 class TagV2Mixin:
     @declared_attr
-    def Tag(cls): # noqa: N805 N802
+    def Tag(cls):  # noqa: N805 N802
         return make_tag_v2(cls)
 
     @declared_attr
-    def tags(cls): # noqa: N805
+    def tags(cls):  # noqa: N805
         return relationship(
             cls.Tag,
             back_populates="parent_rel",
@@ -266,11 +266,11 @@ def make_notification(table):
 
 class LabelMixin:
     @declared_attr
-    def Label(cls): # noqa: N805 N802
+    def Label(cls):  # noqa: N805 N802
         return make_label(cls)
 
     @declared_attr
-    def labels(cls): # noqa: N805
+    def labels(cls):  # noqa: N805
         return relationship(
             cls.Label,
             back_populates="parent_rel",

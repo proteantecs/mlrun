@@ -18,16 +18,18 @@ import pickle
 import uuid
 import warnings
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Any, Optional
 
 import orjson
 from sqlalchemy import (
     BOOLEAN,
     JSON,
     Column,
+    Connection,
     ForeignKey,
     Index,
     Integer,
+    MetaData,
     PrimaryKeyConstraint,
     Table,
     UniqueConstraint,
@@ -35,7 +37,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import Mapper, declared_attr, relationship
 
 import mlrun.common.schemas
 import mlrun.utils.db
@@ -88,7 +90,9 @@ def get_model_by_tablename(tablename: str) -> Optional[type]:
     return None
 
 
-def make_label(table):
+def make_label(parent_cls):
+    table = parent_cls.__tablename__
+
     class Label(Base, mlrun.utils.db.BaseModel):
         __tablename__ = f"{table}_labels"
         __table_args__ = (
@@ -99,22 +103,25 @@ def make_label(table):
         id = Column(Integer, primary_key=True)
         name = Column(Utf8BinText)
         value = Column(Utf8BinText)
-        parent = Column(Integer, ForeignKey(f"{table}.id", ondelete="CASCADE"))
-        parent_cls = get_model_by_tablename(table)
+        parent = Column(
+            Integer,
+            ForeignKey(f"{table}.id", ondelete="CASCADE"),
+            nullable=False,
+        )
+
         parent_rel = relationship(
             parent_cls,
             back_populates="labels",
-            cascade="all, delete-orphan",
             passive_deletes=True,
         )
 
         def get_identifier_string(self) -> str:
             return f"{self.parent}/{self.name}/{self.value}"
 
-    return Label
 
+def make_tag(parent_cls):
+    table = parent_cls.__tablename__
 
-def make_tag(table):
     class Tag(Base, mlrun.utils.db.BaseModel):
         __tablename__ = f"{table}_tags"
         __table_args__ = (
@@ -124,23 +131,36 @@ def make_tag(table):
         id = Column(Integer, primary_key=True)
         project = Column(Utf8BinText)
         name = Column(Utf8BinText)
-        obj_id = Column(Integer, ForeignKey(f"{table}.id"))
+        obj_id = Column(Integer, ForeignKey(f"{table}.id", ondelete="CASCADE"))
 
-        parent_cls = get_model_by_tablename(table)
         parent_rel = relationship(
             parent_cls,
-            back_populates="labels",
-            cascade="all, delete-orphan",
+            back_populates="tags",
             passive_deletes=True,
         )
 
     return Tag
 
 
-# TODO: don't want to refactor everything in one PR so splitting this function to 2 versions - eventually only this one
-#  should be used
-def make_tag_v2(table):
-    class Tag(Base, mlrun.utils.db.BaseModel):
+class TagMixin:
+    @declared_attr
+    def Tag(cls):
+        return make_tag(cls)
+
+    @declared_attr
+    def tags(cls):
+        return relationship(
+            cls.Tag,
+            back_populates="parent_rel",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        )
+
+
+def make_tag_v2(parent_cls):
+    table = parent_cls.__tablename__
+
+    class TagV2(Base, mlrun.utils.db.BaseModel):
         __tablename__ = f"{table}_tags"
         __table_args__ = (
             UniqueConstraint("project", "name", "obj_name", name=f"_{table}_tags_uc"),
@@ -155,7 +175,29 @@ def make_tag_v2(table):
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
 
-    return Tag
+        # relationship back to parent, matching the "tags_v2" side
+        parent_rel = relationship(
+            parent_cls,
+            back_populates="tags",
+            passive_deletes=True,
+        )
+
+    return TagV2
+
+
+class TagV2Mixin:
+    @declared_attr
+    def Tag(cls):
+        return make_tag_v2(cls)
+
+    @declared_attr
+    def tags(cls):
+        return relationship(
+            cls.Tag,
+            back_populates="parent_rel",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        )
 
 
 def make_artifact_tag(table):
@@ -222,20 +264,32 @@ def make_notification(table):
     return Notification
 
 
+class LabelMixin:
+    @declared_attr
+    def Label(cls):
+        return make_label(cls)
+
+    @declared_attr
+    def labels(cls):
+        return relationship(
+            cls.Label,
+            back_populates="parent_rel",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        )
+
+
 # quell SQLAlchemy warnings on duplicate class name (Label)
 with warnings.catch_warnings():
     warnings.simplefilter("ignore")
 
     # deprecated, use ArtifactV2 instead
     # TODO: Remove once data migration v5 is obsolete and add schema migration to remove this table
-    class Artifact(Base, mlrun.utils.db.HasStruct):
+    class Artifact(Base, LabelMixin, TagMixin, mlrun.utils.db.HasStruct):
         __tablename__ = "artifacts"
         __table_args__ = (
             UniqueConstraint("uid", "project", "key", name="_artifacts_uc"),
         )
-
-        Label = make_label(__tablename__)
-        Tag = make_tag(__tablename__)
 
         id = Column(Integer, primary_key=True)
         key = Column(Utf8BinText)
@@ -245,13 +299,10 @@ with warnings.catch_warnings():
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
         body = Column(Blob)
 
-        labels = relationship(Label, cascade="all, delete-orphan")
-        tags = relationship(Tag, cascade="all, delete-orphan")
-
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.key}/{self.uid}"
 
-    class ArtifactV2(Base, mlrun.utils.db.BaseModel):
+    class ArtifactV2(Base, LabelMixin, TagMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "artifacts_v2"
         __table_args__ = (
             UniqueConstraint("uid", "project", "key", name="_artifacts_v2_uc"),
@@ -277,9 +328,6 @@ with warnings.catch_warnings():
             Index("idx_project_bi_updated", "project", "best_iteration", "updated"),
         )
 
-        Label = make_label(__tablename__)
-        Tag = make_artifact_tag(__tablename__)
-
         id = Column(Integer, primary_key=True)
         key = Column(Utf8BinText, index=True)
         project = Column(Utf8BinText)
@@ -298,19 +346,6 @@ with warnings.catch_warnings():
             default=lambda: datetime.now(timezone.utc),
         )
         _full_object = Column("object", Blob)
-
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-        tags = relationship(
-            Tag,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
 
         @property
         def full_object(self):
@@ -336,14 +371,11 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.key}/{self.uid}"
 
-    class Function(Base, mlrun.utils.db.HasStruct):
+    class Function(Base, LabelMixin, TagV2Mixin, mlrun.utils.db.HasStruct):
         __tablename__ = "functions"
         __table_args__ = (
             UniqueConstraint("name", "project", "uid", name="_functions_uc"),
         )
-
-        Label = make_label(__tablename__)
-        Tag = make_tag_v2(__tablename__)
 
         id = Column(Integer, primary_key=True)
         name = Column(Utf8BinText)
@@ -355,31 +387,16 @@ with warnings.catch_warnings():
         body = Column(Blob)
         updated = Column(DateTime)
 
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-        tags = relationship(
-            Tag,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
 
-    class Run(Base, mlrun.utils.db.HasStruct):
+    class Run(Base, LabelMixin, TagMixin, mlrun.utils.db.HasStruct):
         __tablename__ = "runs"
         __table_args__ = (
             UniqueConstraint("uid", "project", "iteration", name="_runs_uc"),
             Index("idx_runs_project_id", "id", "project", unique=True),
         )
 
-        Label = make_label(__tablename__)
-        Tag = make_tag(__tablename__)
         Notification = make_notification(__tablename__)
 
         id = Column(Integer, primary_key=True)
@@ -399,18 +416,6 @@ with warnings.catch_warnings():
         # True - logs were requested for this run
         requested_logs = Column(BOOLEAN, default=False, index=True)
 
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-        tags = relationship(
-            Tag,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
         notifications = relationship(Notification, cascade="all, delete-orphan")
 
         def get_identifier_string(self) -> str:
@@ -440,11 +445,9 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
 
-    class Schedule(Base, mlrun.utils.db.BaseModel):
+    class Schedule(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "schedules_v2"
         __table_args__ = (UniqueConstraint("project", "name", name="_schedules_v2_uc"),)
-
-        Label = make_label(__tablename__)
 
         id = Column(Integer, primary_key=True)
         project = Column(Utf8BinText, nullable=False)
@@ -457,12 +460,7 @@ with warnings.catch_warnings():
         last_run_uri = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
         struct = Column(Blob)
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
+
         concurrency_limit = Column(Integer, nullable=False)
         next_run_time = Column(DateTime)
 
@@ -503,7 +501,7 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.name}"
 
-    class Project(Base, mlrun.utils.db.BaseModel):
+    class Project(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "projects"
         # For now since we use project name a lot
         __table_args__ = (UniqueConstraint("name", name="_projects_uc"),)
@@ -522,15 +520,6 @@ with warnings.catch_warnings():
         state = Column(Utf8BinText)
         users = relationship(User, secondary=project_users)
 
-        Label = make_label(__tablename__)
-
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-
         def get_identifier_string(self) -> str:
             return f"{self.name}"
 
@@ -543,7 +532,7 @@ with warnings.catch_warnings():
         def full_object(self, value):
             self._full_object = pickle.dumps(value)
 
-    class Feature(Base, mlrun.utils.db.BaseModel):
+    class Feature(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "features"
         id = Column(Integer, primary_key=True)
         feature_set_id = Column(
@@ -553,13 +542,6 @@ with warnings.catch_warnings():
         name = Column(Utf8BinText)
         value_type = Column(Utf8BinText)
 
-        Label = make_label(__tablename__)
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
         feature_set = relationship(
             "FeatureSet",
             back_populates="features",
@@ -568,7 +550,7 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.feature_set_id}/{self.name}"
 
-    class Entity(Base, mlrun.utils.db.BaseModel):
+    class Entity(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "entities"
         id = Column(Integer, primary_key=True)
         feature_set_id = Column(
@@ -578,13 +560,6 @@ with warnings.catch_warnings():
         name = Column(Utf8BinText)
         value_type = Column(Utf8BinText)
 
-        Label = make_label(__tablename__)
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
         feature_set = relationship(
             "FeatureSet",
             back_populates="entities",
@@ -593,7 +568,7 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
 
-    class FeatureSet(Base, mlrun.utils.db.BaseModel):
+    class FeatureSet(Base, LabelMixin, TagV2Mixin, mlrun.utils.db.BaseModel):
         __tablename__ = "feature_sets"
         __table_args__ = (
             UniqueConstraint("name", "project", "uid", name="_feature_set_uc"),
@@ -614,22 +589,6 @@ with warnings.catch_warnings():
         uid = Column(Utf8BinText)
 
         _full_object = Column("object", JSON)
-
-        Label = make_label(__tablename__)
-        Tag = make_tag_v2(__tablename__)
-
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-        tags = relationship(
-            Tag,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
 
         features = relationship(
             Feature,
@@ -657,7 +616,7 @@ with warnings.catch_warnings():
             # TODO - convert to pickle, to avoid issues with non-json serializable fields such as datetime
             self._full_object = json.dumps(value, default=str)
 
-    class FeatureVector(Base, mlrun.utils.db.BaseModel):
+    class FeatureVector(Base, LabelMixin, TagV2Mixin, mlrun.utils.db.BaseModel):
         __tablename__ = "feature_vectors"
         __table_args__ = (
             UniqueConstraint("name", "project", "uid", name="_feature_vectors_uc"),
@@ -678,22 +637,6 @@ with warnings.catch_warnings():
         uid = Column(Utf8BinText)
 
         _full_object = Column("object", JSON)
-
-        Label = make_label(__tablename__)
-        Tag = make_tag_v2(__tablename__)
-
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-        tags = relationship(
-            Tag,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
@@ -955,7 +898,7 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.key}"
 
-    class ModelEndpoint(Base, mlrun.utils.db.HasStruct):
+    class ModelEndpoint(Base, LabelMixin, TagV2Mixin, mlrun.utils.db.HasStruct):
         __tablename__ = "model_endpoints"
 
         id = Column(Integer, primary_key=True)
@@ -986,22 +929,6 @@ with warnings.catch_warnings():
         )
         model = relationship(ArtifactV2)
 
-        Label = make_label(__tablename__)
-        Tag = make_tag_v2(__tablename__)  # for versioning (latest and empty tags only)
-
-        labels = relationship(
-            Label,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-        tags = relationship(
-            Tag,
-            cascade="all, delete-orphan",
-            back_populates="parent_rel",
-            passive_deletes=True,
-        )
-
         def get_identifier_string(self) -> str:
             return f"{self.project}_{self.name}_{self.created}"
 
@@ -1024,17 +951,21 @@ def get_partitioned_table_names():
     ]
 
 
-@event.listens_for(Base.metadata, "before_create")
-def _disable_autoinc_on_sqlite(metadata, connection, **kw):
+@event.listens_for(Base.MetaData, "before_create")
+def _disable_autoinc_on_sqlite(
+    metadata: MetaData, connection: Connection, **kw: Any
+) -> None:
     if connection.dialect.name == "sqlite":
         tbl = AlertActivation.__table__
         tbl.columns.id._autoincrement = False
 
 
 @event.listens_for(AlertActivation, "before_insert")
-def _sqlite_autoincrement(mapper, connection, target):
+def _sqlite_autoincrement(
+    mapper: Mapper, connection: Connection, target: AlertActivation
+) -> None:
     if connection.dialect.name == "sqlite" and target.id is None:
-        next_id = connection.execute(
+        next_id: int = connection.execute(
             text("SELECT COALESCE(MAX(id),0) + 1 FROM alert_activations")
         ).scalar_one()
         target.id = next_id

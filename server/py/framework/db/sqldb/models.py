@@ -18,7 +18,7 @@ import pickle
 import uuid
 import warnings
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Optional
 
 import orjson
 from sqlalchemy import (
@@ -30,7 +30,6 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
-    MetaData,
     PrimaryKeyConstraint,
     Table,
     UniqueConstraint,
@@ -998,13 +997,11 @@ with warnings.catch_warnings():
             return f"{self.key}"
 
 
-@event.listens_for(Base.metadata, "before_create")
-def _disable_autoinc_on_sqlite(
-    metadata: MetaData, connection: Connection, **kw: Any
-) -> None:
+@event.listens_for(AlertActivation.__table__, "before_create")
+def _disable_autoinc_on_sqlite(table, connection, **kw):
     if connection.dialect.name == "sqlite":
-        tbl = AlertActivation.__table__
-        tbl.columns.id._autoincrement = False
+        # disable SQLAlchemy's AUTOINCREMENT flag
+        table.c.id.autoincrement = False
 
 
 @event.listens_for(AlertActivation, "before_insert")

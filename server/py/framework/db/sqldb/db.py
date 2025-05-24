@@ -64,6 +64,7 @@ from mlrun.common.schemas.feature_store import (
 )
 from mlrun.common.schemas.model_monitoring import EndpointType, ModelEndpointSchema
 from mlrun.config import config
+from mlrun.db.sql_types import Dialects
 from mlrun.errors import err_to_str
 from mlrun.lists import ArtifactList, RunList
 from mlrun.model import RunObject
@@ -6691,7 +6692,7 @@ class SQLDB(DBInterface):
         """
         dialect = session.bind.dialect.name
 
-        if dialect == "mysql":
+        if dialect == Dialects.MYSQL:
             # Pull back existing partition descriptions
             query = text("""
                 SELECT PARTITION_DESCRIPTION
@@ -6731,7 +6732,7 @@ class SQLDB(DBInterface):
             # No commit needed here, as DDL commands in MySQL cause an implicit commit
             session.execute(text(alter_sql))
 
-        elif dialect.startswith("postgres"):
+        elif dialect.startswith(Dialects.POSTGRESQL):
             # Pull back existing child partition names
             query = text("""
                 SELECT inhrelid::regclass::text AS partition_name

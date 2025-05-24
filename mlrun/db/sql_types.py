@@ -11,6 +11,14 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""
+This module provides SQLAlchemy TypeDecorator subclasses that are aware of
+database dialects (MySQL, PostgreSQL, SQLite) and automatically select
+appropriate native types (e.g., UUID, BLOB, TIMESTAMP with precision) or
+fallbacks (e.g., hex-string storage) to ensure consistent behavior across
+different database backends.
+"""
+
 import uuid
 from typing import Any, Optional, Union
 
@@ -24,6 +32,14 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.types import TypeDecorator
 
+from mlrun.common.types import StrEnum
+
+
+class Dialects(StrEnum):
+    MYSQL = "mysql"
+    POSTGRESQL = "postgresql"
+    SQLITE = "sqlite"
+
 
 class DateTime(TypeDecorator):
     impl = sqlalchemy.types.DateTime
@@ -34,14 +50,14 @@ class DateTime(TypeDecorator):
         self,
         dialect: Dialect,
     ) -> sqlalchemy.types.TypeEngine:
-        if dialect.name == "mysql":
+        if dialect.name == Dialects.MYSQL:
             return dialect.type_descriptor(
                 MYSQL_DATETIME(
                     fsp=self.precision,
                     timezone=True,
                 )
             )
-        if dialect.name == "postgresql":
+        if dialect.name == Dialects.POSTGRESQL:
             return dialect.type_descriptor(
                 PG_TIMESTAMP(
                     precision=self.precision,
@@ -64,9 +80,9 @@ class Blob(TypeDecorator):
         self,
         dialect: Dialect,
     ) -> sqlalchemy.types.TypeEngine:
-        if dialect.name == "mysql":
+        if dialect.name == Dialects.MYSQL:
             return dialect.type_descriptor(MEDIUMBLOB)
-        if dialect.name == "postgresql":
+        if dialect.name == Dialects.POSTGRESQL:
             return dialect.type_descriptor(BYTEA)
         return dialect.type_descriptor(self.impl)
 
@@ -79,21 +95,21 @@ class Utf8BinText(TypeDecorator):
         self,
         dialect: Dialect,
     ) -> sqlalchemy.types.TypeEngine:
-        if dialect.name == "mysql":
+        if dialect.name == Dialects.MYSQL:
             return dialect.type_descriptor(
                 sqlalchemy.dialects.mysql.VARCHAR(
                     collation="utf8_bin",
                     length=255,
                 )
             )
-        if dialect.name == "postgresql":
+        if dialect.name == Dialects.POSTGRESQL:
             # This collation is created as part of the database creation
             return dialect.type_descriptor(
                 Text(
                     collation="utf8_bin",
                 )
             )
-        if dialect.name == "sqlite":
+        if dialect.name == Dialects.SQLITE:
             return dialect.type_descriptor(
                 Text(
                     collation="BINARY",
@@ -112,7 +128,7 @@ class UuidType(TypeDecorator):
     cache_ok = True
 
     def load_dialect_impl(self, dialect: Dialect) -> sqlalchemy.types.TypeEngine:
-        if dialect.name == "postgresql":
+        if dialect.name == Dialects.POSTGRESQL:
             return dialect.type_descriptor(PG_UUID(as_uuid=True))
         return dialect.type_descriptor(CHAR(32))
 
@@ -124,10 +140,10 @@ class UuidType(TypeDecorator):
         if value is None:
             return None
         if isinstance(value, uuid.UUID):
-            return value if dialect.name == "postgresql" else value.hex
+            return value if dialect.name == Dialects.POSTGRESQL else value.hex
         if isinstance(value, str):
             u = uuid.UUID(value)
-            return u if dialect.name == "postgresql" else u.hex
+            return u if dialect.name == Dialects.POSTGRESQL else u.hex
         raise ValueError(f"Cannot bind UUID value {value!r}")
 
     def process_result_value(

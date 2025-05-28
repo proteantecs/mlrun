@@ -396,6 +396,12 @@ with warnings.catch_warnings():
         iteration = Column(Integer)
         best_iteration = Column(BOOLEAN, default=False, index=True)
         uid = Column(Utf8BinText)
+        parent_id = Column(
+            Integer,
+            ForeignKey("artifacts_v2.id", ondelete="SET NULL"),
+            nullable=True,
+            index=True,
+        )
         created = Column(
             DateTime,
             default=lambda: datetime.now(timezone.utc),
@@ -405,6 +411,13 @@ with warnings.catch_warnings():
             default=lambda: datetime.now(timezone.utc),
         )
         _full_object = Column("object", Blob)
+
+        parent = relationship(
+            "ArtifactV2",
+            remote_side=[id],
+            backref="child_artifacts",
+            passive_deletes=True,
+        )
 
         @property
         def full_object(self):

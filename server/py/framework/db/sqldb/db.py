@@ -124,8 +124,6 @@ from framework.db.sqldb.models import (
     Schedule,
     SystemMetadata,
     TimeWindowTracker,
-    _labeled,
-    _tagged,
     _with_notifications,
 )
 
@@ -6837,22 +6835,21 @@ class SQLDB(DBInterface):
             session.execute(text(alter_sql))
 
         elif dialect.startswith(Dialects.POSTGRESQL):
-            # Pull back existing child partition names
+            # Get existing child partition names
             query = text("""
-                SELECT inhrelid::regclass::text AS partition_name
-                FROM pg_inherits
-                WHERE inhparent = :table_name::regclass
-            """)
+                    SELECT inhrelid::regclass::text AS partition_name
+                    FROM pg_inherits
+                    WHERE inhparent = :table_name::regclass
+                """)
             rows = session.execute(query, {"table_name": table_name}).mappings().all()
-            existing_partitions = {row["partition_name"] for row in rows}
+            existing_partition_names = {row["partition_name"] for row in rows}
 
-            # Filter partitions to add only those that are not in the table
+            # Filter out partitions that already exist
             new_partitions = [
-                (partition_name, partition_value)
-                for partition_name, partition_value in partitioning_information_list
-                if partition_name not in existing_partitions
+                (partition_name, range_spec)
+                for partition_name, range_spec in partitioning_information_list
+                if partition_name not in existing_partition_names
             ]
-
             if not new_partitions:
                 return
 
@@ -6862,22 +6859,23 @@ class SQLDB(DBInterface):
                 new_partitions,
             )
 
-            # For each new partition, split the supplied "lower,upper" and emit DDL
-            for partition_name, partition_value in new_partitions:
-                bounds = [b.strip() for b in partition_value.split(",", 1)]
-                if len(bounds) != 2:
+            # Attach each new partition
+            for partition_name, range_spec in new_partitions:
+                lower_bound, upper_bound = [
+                    bound.strip() for bound in range_spec.split(",", 1)
+                ]
+                if not (lower_bound and upper_bound):
                     raise ValueError(
-                        f"Postgres partition '{partition_name}' needs bounds as 'lower,upper', got '{partition_value}'"
+                        f"Partition '{partition_name}' needs bounds as 'lower,upper', got '{range_spec}'"
                     )
-                lower, upper = bounds
-                ddl = f"""
-                    ALTER TABLE {table_name}
-                    ADD PARTITION {partition_name}
-                    FOR VALUES FROM ({lower}) TO ({upper});
-                """
-                # No commit needed here, as DDL in Postgres also commits automatically
-                session.execute(text(ddl))
 
+                ddl = text(f"""
+                        ALTER TABLE "{table_name}"
+                        ATTACH PARTITION "{partition_name}"
+                        FOR VALUES FROM ({lower_bound}) TO ({upper_bound});
+                    """)
+                session.execute(ddl)
+            session.commit()
         else:
             logger.warning(
                 "Partitioning not implemented for dialect '%s', skipping",

@@ -609,7 +609,7 @@ with warnings.catch_warnings():
         created: Mapped[datetime] = mapped_column(
             mlrun.db.sql_types.DateTime, default=datetime.now(tz=timezone.utc)
         )
-        default_function_node_SELECTOR: Mapped[dict] = mapped_column(
+        default_function_node_selector: Mapped[dict] = mapped_column(
             "default_function_node_selector", JSON
         )
         state: Mapped[str] = mapped_column(mlrun.db.sql_types.Utf8BinText)

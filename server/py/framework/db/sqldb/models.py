@@ -45,6 +45,8 @@ import mlrun.utils.db
 Base = declarative_base()
 NULL = None  # Avoid flake8 issuing warnings when comparing in filter
 
+_tagged = None
+_labeled = None
 _with_notifications = None
 _classes = None
 

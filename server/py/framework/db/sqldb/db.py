@@ -46,42 +46,24 @@ from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 from sqlalchemy.orm import Session, aliased, load_only, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
-import mlrun
+import mlrun.artifacts.base
 import mlrun.common.constants as mlrun_constants
+import mlrun.common.db.sql_session
 import mlrun.common.formatters
 import mlrun.common.model_monitoring
 import mlrun.common.runtimes.constants
 import mlrun.common.schemas
+import mlrun.common.schemas.feature_store
+import mlrun.common.schemas.model_monitoring
 import mlrun.common.types
+import mlrun.config
 import mlrun.datastore
 import mlrun.errors
 import mlrun.k8s_utils
+import mlrun.lists
 import mlrun.model
+import mlrun.utils
 import mlrun.utils.db
-from mlrun.artifacts.base import fill_artifact_object_hash
-from mlrun.common.db.sql_session import Dialects
-from mlrun.common.schemas.feature_store import (
-    FeatureSetDigestOutputV2,
-    FeatureSetDigestSpecV2,
-)
-from mlrun.common.schemas.model_monitoring import EndpointType, ModelEndpointSchema
-from mlrun.config import config
-from mlrun.errors import err_to_str
-from mlrun.lists import ArtifactList, RunList
-from mlrun.model import RunObject
-from mlrun.utils import (
-    fill_function_hash,
-    fill_object_hash,
-    generate_artifact_uri,
-    generate_object_uri,
-    get_in,
-    is_legacy_artifact,
-    logger,
-    parse_artifact_uri,
-    update_in,
-    validate_artifact_key_name,
-    validate_tag_name,
-)
 
 import framework.constants
 import framework.db.session
@@ -124,6 +106,8 @@ from framework.db.sqldb.models import (
     Schedule,
     SystemMetadata,
     TimeWindowTracker,
+    _labeled,
+    _tagged,
     _with_notifications,
 )
 
@@ -162,22 +146,23 @@ def retry_on_conflict(function):
                 if mlrun.utils.helpers.are_strings_in_exception_chain_messages(
                     exc, conflict_messages
                 ):
-                    logger.warning(
-                        "Got conflict error from DB. Retrying", err=err_to_str(exc)
+                    mlrun.utils.logger.warning(
+                        "Got conflict error from DB. Retrying",
+                        err=mlrun.errors.err_to_str(exc),
                     )
                     raise mlrun.errors.MLRunRuntimeError(
                         "Got conflict error from DB"
                     ) from exc
                 raise mlrun.errors.MLRunFatalFailureError(original_exception=exc)
 
-        if config.httpdb.db.conflict_retry_timeout:
-            interval = config.httpdb.db.conflict_retry_interval
+        if mlrun.config.config.httpdb.db.conflict_retry_timeout:
+            interval = mlrun.config.config.httpdb.db.conflict_retry_interval
             if interval is None:
                 interval = mlrun.utils.create_step_backoff([[0.0001, 1], [3, None]])
             return mlrun.utils.helpers.retry_until_successful(
                 interval,
-                config.httpdb.db.conflict_retry_timeout,
-                logger,
+                mlrun.config.config.httpdb.db.conflict_retry_timeout,
+                mlrun.utils.logger,
                 False,
                 _try_function,
             )
@@ -194,7 +179,7 @@ class SQLDB(DBInterface):
 
     def initialize(self, session):
         if self.dsn and self.dsn.startswith("sqlite:///"):
-            logger.info("Creating sqlite db file", dsn=self.dsn)
+            mlrun.utils.logger.info("Creating sqlite db file", dsn=self.dsn)
             parsed = urllib.parse.urlparse(self.dsn)
             pathlib.Path(parsed.path[1:]).parent.mkdir(parents=True, exist_ok=True)
 
@@ -222,7 +207,7 @@ class SQLDB(DBInterface):
         project="",
         iter=0,
     ):
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Storing run to db",
             project=project,
             uid=uid,
@@ -259,7 +244,7 @@ class SQLDB(DBInterface):
         has an outdated snapshot. Here, we try to create a run, if we get a conflict, the session was rollbacked, and
         we can now read the run from the DB.
         """
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Creating or getting run in DB",
             project=project,
             uid=uid,
@@ -289,11 +274,11 @@ class SQLDB(DBInterface):
             raise mlrun.errors.MLRunMissingProjectError()
         run = self._get_run(session, uid, project, iter, with_for_update=True)
         if not run:
-            run_uri = RunObject.create_uri(project, uid, iter)
+            run_uri = mlrun.model.RunObject.create_uri(project, uid, iter)
             raise mlrun.errors.MLRunNotFoundError(f"Run {run_uri} not found")
         struct = run.struct
         for key, val in updates.items():
-            update_in(struct, key, val)
+            mlrun.utils.update_in(struct, key, val)
         self._ensure_run_name_on_update(run, struct)
         self._update_run_state(run, struct)
         start_time = run_start_time(struct)
@@ -320,7 +305,7 @@ class SQLDB(DBInterface):
         last_update_time_from: typing.Optional[datetime] = None,
         states: typing.Optional[list[str]] = None,
         specific_uids: typing.Optional[list[str]] = None,
-    ) -> typing.Union[list[str], RunList]:
+    ) -> typing.Union[list[str], mlrun.lists.RunList]:
         """
         List all runs uids in the DB
         :param session: DB session
@@ -360,7 +345,7 @@ class SQLDB(DBInterface):
             # note we cannot promise that the same row will be returned each time per uid as the order is not guaranteed
             query = query.group_by(Run.uid)
 
-            runs = RunList()
+            runs = mlrun.lists.RunList()
             for run in query:
                 runs.append(run.struct)
 
@@ -437,7 +422,7 @@ class SQLDB(DBInterface):
         with_notifications: bool = False,
         offset: typing.Optional[int] = None,
         limit: typing.Optional[int] = None,
-    ) -> RunList:
+    ) -> mlrun.lists.RunList:
         if not project:
             raise mlrun.errors.MLRunMissingProjectError()
         query = self._find_runs(session, uid, project, labels)
@@ -499,7 +484,7 @@ class SQLDB(DBInterface):
         if not return_as_run_structs:
             return query.all()
 
-        runs = RunList()
+        runs = mlrun.lists.RunList()
         for run in query:
             run_struct = run.struct
             self._enrich_run_struct_from_model(run, run_struct, with_notifications)
@@ -563,7 +548,7 @@ class SQLDB(DBInterface):
             self._fill_run_struct_with_notifications(run.notifications, run_struct)
 
     def _delete_project_runs(self, session: Session, project: str):
-        logger.debug("Removing project runs from db", project=project)
+        mlrun.utils.logger.debug("Removing project runs from db", project=project)
         self._delete_multi_objects(
             session=session,
             main_table=Run,
@@ -688,7 +673,7 @@ class SQLDB(DBInterface):
 
         if tag:
             # fail early if tag is invalid
-            validate_tag_name(tag, "artifact.metadata.tag")
+            mlrun.utils.validate_tag_name(tag, "artifact.metadata.tag")
 
         original_uid = uid
 
@@ -703,7 +688,9 @@ class SQLDB(DBInterface):
             artifact_dict.setdefault("metadata", {})["project"] = project
 
         # calculate uid
-        uid = fill_artifact_object_hash(artifact_dict, iter, producer_id)
+        uid = mlrun.artifacts.base.fill_artifact_object_hash(
+            artifact_dict, iter, producer_id
+        )
 
         # If object was referenced by UID, the request cannot modify it
         if original_uid and uid != original_uid:
@@ -726,7 +713,7 @@ class SQLDB(DBInterface):
                 self._should_update_artifact(existing_artifact, uid, iter)
                 or always_overwrite
             ):
-                logger.debug(
+                mlrun.utils.logger.debug(
                     "Updating an existing artifact",
                     project=project,
                     key=key,
@@ -748,7 +735,7 @@ class SQLDB(DBInterface):
                 if tag:
                     self.tag_artifacts(session, tag, [db_artifact], project)
                 return uid
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "A similar artifact exists, but some values have changed - creating a new artifact",
                 project=project,
                 key=key,
@@ -783,17 +770,19 @@ class SQLDB(DBInterface):
         if not project:
             raise mlrun.errors.MLRunMissingProjectError()
         if not uid:
-            uid = fill_artifact_object_hash(artifact, iteration, producer_id)
+            uid = mlrun.artifacts.base.fill_artifact_object_hash(
+                artifact, iteration, producer_id
+            )
         # check if the object already exists
         query = self._query(session, ArtifactV2, key=key, project=project, uid=uid)
         existing_object = query.one_or_none()
         if existing_object:
-            object_uri = generate_object_uri(project, key, tag)
+            object_uri = mlrun.utils.generate_object_uri(project, key, tag)
             raise mlrun.errors.MLRunConflictError(
                 f"Adding an already-existing {ArtifactV2.__name__} - {object_uri}"
             )
 
-        validate_artifact_key_name(key, "artifact.key")
+        mlrun.utils.validate_artifact_key_name(key, "artifact.key")
 
         db_artifact = ArtifactV2(project=project, key=key)
         self._update_artifact_record_from_dict(
@@ -810,7 +799,7 @@ class SQLDB(DBInterface):
 
         self._upsert(session, [db_artifact])
         if tag:
-            validate_tag_name(tag, "artifact.metadata.tag")
+            mlrun.utils.validate_tag_name(tag, "artifact.metadata.tag")
             self.tag_artifacts(
                 session,
                 tag,
@@ -832,7 +821,9 @@ class SQLDB(DBInterface):
     def _get_parent_artifact_id(self, session, parent_uri: str) -> int:
         if parent_uri:
             _, uri = mlrun.datastore.parse_store_uri(parent_uri)
-            project, key, iteration, tag, tree, uid = parse_artifact_uri(uri)
+            project, key, iteration, tag, tree, uid = mlrun.utils.parse_artifact_uri(
+                uri
+            )
             parent_db_artifact = self.read_artifact(
                 session=session,
                 key=key,
@@ -882,7 +873,7 @@ class SQLDB(DBInterface):
         partition_order: typing.Optional[
             mlrun.common.schemas.OrderType
         ] = mlrun.common.schemas.OrderType.desc,
-    ) -> typing.Union[list, ArtifactList]:
+    ) -> typing.Union[list, mlrun.lists.ArtifactList]:
         if not project:
             raise mlrun.errors.MLRunMissingProjectError()
 
@@ -919,7 +910,7 @@ class SQLDB(DBInterface):
         if as_records:
             return artifact_records
 
-        artifacts = ArtifactList()
+        artifacts = mlrun.lists.ArtifactList()
         for artifact, artifact_tag in artifact_records:
             artifact_struct = artifact.full_object
             self._set_tag_in_artifact_struct(artifact_struct, artifact_tag)
@@ -939,7 +930,7 @@ class SQLDB(DBInterface):
         project: str,
         producer_id: str,
         artifact_identifiers: list[tuple] = "",
-    ) -> ArtifactList:
+    ) -> mlrun.lists.ArtifactList:
         if not project:
             raise mlrun.errors.MLRunMissingProjectError()
         artifact_records = self._find_artifacts_for_producer_id(
@@ -949,7 +940,7 @@ class SQLDB(DBInterface):
             artifact_identifiers=artifact_identifiers,
         )
 
-        artifacts = ArtifactList()
+        artifacts = mlrun.lists.ArtifactList()
         for artifact, artifact_tag in artifact_records:
             artifact_struct = artifact.full_object
             self._set_tag_in_artifact_struct(artifact_struct, artifact_tag)
@@ -1024,7 +1015,9 @@ class SQLDB(DBInterface):
 
             if fail:
                 if raise_on_not_found:
-                    artifact_uri = generate_artifact_uri(project, key, tag, iter, uid)
+                    artifact_uri = mlrun.utils.generate_artifact_uri(
+                        project, key, tag, iter, uid
+                    )
                     raise mlrun.errors.MLRunNotFoundError(
                         f"Artifact {artifact_uri} not found"
                     )
@@ -1089,7 +1082,7 @@ class SQLDB(DBInterface):
             with_entities=[ArtifactV2.key, ArtifactV2.uid],
         )
         total_artifacts = len(distinct_keys_and_uids)
-        max_deletions = config.artifacts.limits.max_deletions
+        max_deletions = mlrun.config.config.artifacts.limits.max_deletions
 
         if total_artifacts > max_deletions:
             raise mlrun.errors.MLRunInternalServerError(
@@ -1097,7 +1090,7 @@ class SQLDB(DBInterface):
                 f"is {max_deletions}. Refine the filter and try again with a smaller batch."
             )
 
-        logger.info("Deleting artifacts", total_artifacts=total_artifacts)
+        mlrun.utils.logger.info("Deleting artifacts", total_artifacts=total_artifacts)
 
         failed_deletions_count = 0
         failed_deletions_count_integrity = 0
@@ -1115,24 +1108,24 @@ class SQLDB(DBInterface):
             except IntegrityError as exc:
                 # Check if the error is related to ModelEndpoint table
                 if "model_endpoints" in str(exc).lower():
-                    logger.error(
+                    mlrun.utils.logger.error(
                         "Failed to delete model artifact due to existing model endpoints that reference it",
                         project=project,
                         key=key,
                         uid=uid,
-                        err=err_to_str(exc),
+                        err=mlrun.errors.err_to_str(exc),
                     )
                     failed_deletions_count_integrity += 1
                 else:
                     # Re-raise the exception if it's not related to ModelEndpoint
                     raise
             except Exception as exc:
-                logger.error(
+                mlrun.utils.logger.error(
                     "Failed to delete artifact",
                     project=project,
                     key=key,
                     uid=uid,
-                    err=err_to_str(exc),
+                    err=mlrun.errors.err_to_str(exc),
                 )
                 failed_deletions_count += 1
                 continue
@@ -1147,7 +1140,9 @@ class SQLDB(DBInterface):
             raise mlrun.errors.MLRunInternalServerError(
                 f"Failed to delete {failed_deletions_count} artifacts."
             )
-        logger.info("Successfully deleted artifacts", total_artifacts=total_artifacts)
+        mlrun.utils.logger.info(
+            "Successfully deleted artifacts", total_artifacts=total_artifacts
+        )
 
     def list_artifact_tags(
         self, session, project, category: mlrun.common.schemas.ArtifactCategories = None
@@ -1218,7 +1213,7 @@ class SQLDB(DBInterface):
         except mlrun.errors.MLRunNotFoundError:
             return None
         except sqlalchemy.exc.MultipleResultsFound as exc:
-            logger.error(
+            mlrun.utils.logger.error(
                 "Failed to delete artifact because multiple artifacts were found",
                 key=key,
                 project=project,
@@ -1226,7 +1221,7 @@ class SQLDB(DBInterface):
                 iter=iter,
                 producer_id=producer_id,
                 uid=uid,
-                err=err_to_str(exc),
+                err=mlrun.errors.err_to_str(exc),
             )
 
             error_message = (
@@ -1341,7 +1336,7 @@ class SQLDB(DBInterface):
 
             # delete the tags
             for old_tag in query:
-                logger.debug(
+                mlrun.utils.logger.debug(
                     "Deleting old tag",
                     old_tag=old_tag,
                     **log_kwargs,
@@ -1373,14 +1368,14 @@ class SQLDB(DBInterface):
         log_kwargs = {"project": project, "session": session.hash_key, "tag": tag_name}
         artifacts_keys = [artifact.key for artifact in artifacts]
         if not artifacts_keys:
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "No artifacts to tag",
                 artifacts=artifacts,
                 **log_kwargs,
             )
             return
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Locking artifacts in db before tagging artifacts",
             artifacts_keys=artifacts_keys,
             **log_kwargs,
@@ -1396,7 +1391,7 @@ class SQLDB(DBInterface):
             ArtifactV2.key.in_(artifacts_keys),
         ).order_by(ArtifactV2.id.asc()).populate_existing().with_for_update().all()
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Acquired artifacts db lock",
             artifacts_keys=artifacts_keys,
             **log_kwargs,
@@ -1423,14 +1418,14 @@ class SQLDB(DBInterface):
 
         # commit the changes, unlocking the flow for other processes
         self._commit(session, objects)
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Released artifacts db lock after tagging artifacts",
             artifacts_keys=artifacts_keys,
             **log_kwargs,
         )
 
     def _delete_project_artifacts(self, session: Session, project: str):
-        logger.debug("Removing project artifacts from db", project=project)
+        mlrun.utils.logger.debug("Removing project artifacts from db", project=project)
         self._delete_multi_objects(
             session=session,
             main_table=ArtifactV2,
@@ -1561,7 +1556,7 @@ class SQLDB(DBInterface):
         if not db_key:
             artifact_dict.setdefault("spec", {})["db_key"] = key
         else:
-            validate_artifact_key_name(db_key, "artifact.db_key")
+            mlrun.utils.validate_artifact_key_name(db_key, "artifact.db_key")
 
         # remove the tag from the metadata, as it is stored in a separate table
         artifact_dict["metadata"].pop("tag", None)
@@ -1619,7 +1614,7 @@ class SQLDB(DBInterface):
         if parent:
             artifact_spec["parent_uri"] = mlrun.datastore.get_store_uri(
                 kind=f"{parent.kind}s",
-                uri=generate_artifact_uri(
+                uri=mlrun.utils.generate_artifact_uri(
                     project=parent.project,
                     key=parent.key,
                     iter=parent.iteration if parent.iteration else None,
@@ -1739,7 +1734,7 @@ class SQLDB(DBInterface):
         """
         if category and kind:
             message = "Category and Kind filters can't be given together"
-            logger.warning(message, kind=kind, category=category)
+            mlrun.utils.logger.warning(message, kind=kind, category=category)
             raise ValueError(message)
 
         tag_id_alias = "tag_id"
@@ -1864,7 +1859,7 @@ class SQLDB(DBInterface):
                     parent_tag,
                     parent_tree,
                     parent_uid,
-                ) = parse_artifact_uri(uri)
+                ) = mlrun.utils.parse_artifact_uri(uri)
             elif ":" in parent_uri:
                 parent_key, parent_tag = parent_uri.split(":", maxsplit=1)
             else:
@@ -2160,7 +2155,7 @@ class SQLDB(DBInterface):
         if not project:
             raise mlrun.errors.MLRunMissingProjectError()
         artifact = deepcopy(artifact)
-        if is_legacy_artifact(artifact):
+        if mlrun.utils.is_legacy_artifact(artifact):
             updated, key, labels = self._process_legacy_artifact_v1_dict_to_store(
                 artifact, key, iter
             )
@@ -2172,7 +2167,7 @@ class SQLDB(DBInterface):
         art = _get_artifact(uid, project, key)
         if not art:
             # for backwards compatibility only validating key name on new artifacts
-            validate_artifact_key_name(key, "artifact.key")
+            mlrun.utils.validate_artifact_key_name(key, "artifact.key")
             art = Artifact(key=key, uid=uid, updated=updated, project=project)
             existed = False
 
@@ -2185,7 +2180,7 @@ class SQLDB(DBInterface):
 
             # we want to ensure that the tag is valid before storing,
             # if it isn't, MLRunInvalidArgumentError will be raised
-            validate_tag_name(tag, "artifact.metadata.tag")
+            mlrun.utils.validate_tag_name(tag, "artifact.metadata.tag")
             self._tag_artifacts_v1(session, [art], project, tag)
             # we want to tag the artifact also as "latest" if it's the first time we store it, reason is that there are
             # updates we are doing to the metadata of the artifact (like updating the labels) and we don't want those
@@ -2249,7 +2244,7 @@ class SQLDB(DBInterface):
 
         art = query.one_or_none()
         if not art:
-            artifact_uri = generate_artifact_uri(project, key, tag, iter)
+            artifact_uri = mlrun.utils.generate_artifact_uri(project, key, tag, iter)
             raise mlrun.errors.MLRunNotFoundError(f"Artifact {artifact_uri} not found")
 
         artifact_struct = art.struct
@@ -2280,7 +2275,9 @@ class SQLDB(DBInterface):
                 # To maintain backwards compatibility,
                 # we validate the tag name only if it does not already exist on the artifact,
                 # we don't want to fail on old tags that were created before the validation was added.
-                validate_tag_name(tag_name=name, field_name="artifact.metadata.tag")
+                mlrun.utils.validate_tag_name(
+                    tag_name=name, field_name="artifact.metadata.tag"
+                )
                 tag = artifact.Tag(project=project, name=name)
             tag.obj_id = artifact.id
             self._upsert(session, [tag], ignore=True)
@@ -2340,7 +2337,7 @@ class SQLDB(DBInterface):
         latest_tag = self._find_artifact_latest_tag(session, object_record)
 
         if not latest_tag:
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "No 'latest' tag found for artifact",
                 artifact_uid=object_record.uid,
             )
@@ -2354,7 +2351,7 @@ class SQLDB(DBInterface):
             )
 
             if other_latest:
-                logger.debug(
+                mlrun.utils.logger.debug(
                     "'latest' tag exists in other iterations for the same producer_id. "
                     "Not moving the 'latest' tag",
                     artifact_uid=object_record.uid,
@@ -2368,7 +2365,7 @@ class SQLDB(DBInterface):
         )
 
         if most_recent_artifact_ids:
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Moving 'latest' tag to the most recent artifacts",
                 artifact_id=most_recent_artifact_ids,
             )
@@ -2385,7 +2382,7 @@ class SQLDB(DBInterface):
                 tag.obj_id = recent_artifact_id
                 session.add(tag)
         else:
-            logger.warning(
+            mlrun.utils.logger.warning(
                 "No recent artifact found to move 'latest' tag",
                 artifact_uid=object_record.uid,
             )
@@ -2484,7 +2481,7 @@ class SQLDB(DBInterface):
     ) -> str:
         if not project:
             raise mlrun.errors.MLRunMissingProjectError()
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Storing function to DB",
             name=name,
             project=project,
@@ -2495,13 +2492,13 @@ class SQLDB(DBInterface):
         function = deepcopy(function)
         tag = (
             tag
-            or get_in(function, "metadata.tag")
+            or mlrun.utils.get_in(function, "metadata.tag")
             or mlrun.common.constants.RESERVED_TAG_NAME_LATEST
         )
-        hash_key = fill_function_hash(function, tag)
+        hash_key = mlrun.utils.fill_function_hash(function, tag)
 
         # clear tag from object in case another function will "take" that tag
-        update_in(function, "metadata.tag", "")
+        mlrun.utils.update_in(function, "metadata.tag", "")
 
         # versioned means whether we want to version this function object so that it will queryable by its hash key
         # to enable that we set the uid to the hash key so it will have a unique record (Unique constraint of function
@@ -2515,7 +2512,7 @@ class SQLDB(DBInterface):
             uid = f"{unversioned_tagged_object_uid_prefix}{tag}"
 
         updated = datetime.now(timezone.utc)
-        update_in(function, "metadata.updated", updated)
+        mlrun.utils.update_in(function, "metadata.updated", updated)
         body_name = function.get("metadata", {}).get("name")
         if body_name and body_name != name:
             raise mlrun.errors.MLRunInvalidArgumentError(
@@ -2524,7 +2521,7 @@ class SQLDB(DBInterface):
             )
         if not body_name:
             function.setdefault("metadata", {})["name"] = name
-        if function_node_selector := get_in(function, "spec.node_selector"):
+        if function_node_selector := mlrun.utils.get_in(function, "spec.node_selector"):
             mlrun.k8s_utils.validate_node_selectors(function_node_selector)
         fn = self._get_class_instance_by_uid(session, Function, name, project, uid)
         if not fn:
@@ -2534,7 +2531,7 @@ class SQLDB(DBInterface):
                 uid=uid,
             )
         fn.updated = updated
-        labels = get_in(function, "metadata.labels", {})
+        labels = mlrun.utils.get_in(function, "metadata.labels", {})
         update_labels(fn, labels)
         # avoiding data duplications as the attributes below are given in the function object
         # and we store them on a specific columns
@@ -2625,7 +2622,7 @@ class SQLDB(DBInterface):
             )
         except mlrun.errors.MLRunNotFoundError as exc:
             if "_" in name:
-                logger.warning(
+                mlrun.utils.logger.warning(
                     "Failed to get underscore-named function, trying without normalization",
                     function_name=name,
                 )
@@ -2636,7 +2633,9 @@ class SQLDB(DBInterface):
                 raise exc
 
     def delete_function(self, session: Session, project: str, name: str):
-        logger.debug("Removing function from db", project=project, name=name)
+        mlrun.utils.logger.debug(
+            "Removing function from db", project=project, name=name
+        )
 
         # deleting tags and labels, because in sqlite the relationships aren't necessarily cascading
         self._delete_function_tags(session, project, name, commit=False)
@@ -2648,7 +2647,9 @@ class SQLDB(DBInterface):
     def delete_functions(
         self, session: Session, project: str, names: typing.Union[str, list[str]]
     ) -> None:
-        logger.debug("Removing functions from db", project=project, name=names)
+        mlrun.utils.logger.debug(
+            "Removing functions from db", project=project, name=names
+        )
 
         self._delete_multi_objects(
             session=session,
@@ -2679,7 +2680,7 @@ class SQLDB(DBInterface):
         if function:
             struct = function.struct
             for key, val in updates.items():
-                update_in(struct, key, val)
+                mlrun.utils.update_in(struct, key, val)
             function.kind = (
                 struct.pop("kind", None) if not function.kind else function.kind
             )
@@ -2713,7 +2714,7 @@ class SQLDB(DBInterface):
             hash_key=hash_key,
         )
         if not function:
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Function is not found, skipping external invocation urls update",
                 project=project,
                 name=name,
@@ -2731,7 +2732,7 @@ class SQLDB(DBInterface):
             operation == mlrun.common.types.Operation.ADD
             and url not in existing_invocation_urls
         ):
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Adding new external invocation url to function",
                 project=project,
                 name=name,
@@ -2744,7 +2745,7 @@ class SQLDB(DBInterface):
             operation == mlrun.common.types.Operation.REMOVE
             and url in existing_invocation_urls
         ):
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Removing an external invocation url from function",
                 project=project,
                 name=name,
@@ -2784,7 +2785,7 @@ class SQLDB(DBInterface):
 
             return mlrun.common.formatters.FunctionFormat.format_obj(function, format_)
         else:
-            function_uri = generate_object_uri(project, name, tag, hash_key)
+            function_uri = mlrun.utils.generate_object_uri(project, name, tag, hash_key)
             raise mlrun.errors.MLRunNotFoundError(f"Function not found {function_uri}")
 
     def _get_function_db_object(
@@ -2818,7 +2819,7 @@ class SQLDB(DBInterface):
                 session, Function, project, name, computed_tag
             )
             if tag_function_uid is None:
-                function_uri = generate_object_uri(project, name, tag)
+                function_uri = mlrun.utils.generate_object_uri(project, name, tag)
                 raise mlrun.errors.MLRunNotFoundError(
                     f"Function tag not found {function_uri}"
                 )
@@ -2851,7 +2852,7 @@ class SQLDB(DBInterface):
             ).isoformat(timespec="microseconds")
 
     def _delete_project_functions(self, session: Session, project: str):
-        logger.debug("Removing project functions from db", project=project)
+        mlrun.utils.logger.debug("Removing project functions from db", project=project)
         self._delete_multi_objects(
             session=session,
             main_table=Function,
@@ -2934,7 +2935,7 @@ class SQLDB(DBInterface):
             next_run_time=next_run_time,
         )
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Storing schedule to db",
             project=schedule.project,
             name=schedule.name,
@@ -2973,7 +2974,7 @@ class SQLDB(DBInterface):
             next_run_time=next_run_time,
         )
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Saving schedule to db",
             project=schedule_record.project,
             name=schedule_record.name,
@@ -2999,7 +3000,9 @@ class SQLDB(DBInterface):
         next_run_time: typing.Optional[datetime] = None,
     ) -> Schedule:
         if concurrency_limit is None:
-            concurrency_limit = config.httpdb.scheduling.default_concurrency_limit
+            concurrency_limit = (
+                mlrun.config.config.httpdb.scheduling.default_concurrency_limit
+            )
         if next_run_time is not None:
             # We receive the next_run_time with localized timezone info (e.g +03:00). All the timestamps should be
             # saved in the DB in UTC timezone, therefore we transform next_run_time to UTC as well.
@@ -3045,7 +3048,7 @@ class SQLDB(DBInterface):
             next_run_time=next_run_time,
         )
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Updating schedule in db",
             project=project,
             name=name,
@@ -3099,7 +3102,9 @@ class SQLDB(DBInterface):
         as_records: bool = False,
         limit: typing.Optional[int] = None,
     ) -> list[mlrun.common.schemas.ScheduleRecord]:
-        logger.debug("Getting schedules from db", project=project, name=name, kind=kind)
+        mlrun.utils.logger.debug(
+            "Getting schedules from db", project=project, name=name, kind=kind
+        )
         query = self._query(session, Schedule, kind=kind)
         query = self._filter_query_by_resource_project(query, Schedule, project)
         if next_run_time_since or next_run_time_until:
@@ -3129,7 +3134,7 @@ class SQLDB(DBInterface):
     def get_schedule(
         self, session: Session, project: str, name: str, raise_on_not_found: bool = True
     ) -> typing.Optional[mlrun.common.schemas.ScheduleRecord]:
-        logger.debug("Getting schedule from db", project=project, name=name)
+        mlrun.utils.logger.debug("Getting schedule from db", project=project, name=name)
         schedule_record = self._get_schedule_record(
             session, project, name, raise_on_not_found
         )
@@ -3139,7 +3144,9 @@ class SQLDB(DBInterface):
         return schedule
 
     def delete_schedule(self, session: Session, project: str, name: str):
-        logger.debug("Removing schedule from db", project=project, name=name)
+        mlrun.utils.logger.debug(
+            "Removing schedule from db", project=project, name=name
+        )
         self._delete_class_labels(
             session, Schedule, project=project, name=name, commit=False
         )
@@ -3148,7 +3155,9 @@ class SQLDB(DBInterface):
     def delete_schedules(
         self, session: Session, project: str, names: typing.Union[str, list[str]]
     ) -> None:
-        logger.debug("Removing schedules from db", project=project, name=names)
+        mlrun.utils.logger.debug(
+            "Removing schedules from db", project=project, name=names
+        )
         self._delete_multi_objects(
             session=session,
             main_table=Schedule,
@@ -3179,7 +3188,7 @@ class SQLDB(DBInterface):
         self._upsert(session, schedules_update)
 
     def delete_project_schedules(self, session: Session, project: str):
-        logger.debug("Removing project schedules from db", project=project)
+        mlrun.utils.logger.debug("Removing project schedules from db", project=project)
         self._delete_multi_objects(
             session=session,
             main_table=Schedule,
@@ -3212,7 +3221,7 @@ class SQLDB(DBInterface):
         related_tables = related_tables or []
 
         def skip_deletion():
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "No identifier values provided, skipping deletion",
                 project=project,
                 tables=[main_table] + related_tables,
@@ -3237,7 +3246,7 @@ class SQLDB(DBInterface):
             where_clause = main_table_identifier.in_(main_table_identifier_values)
 
         for cls in related_tables:
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Removing objects",
                 cls=cls,
                 project=project,
@@ -3255,7 +3264,7 @@ class SQLDB(DBInterface):
 
             # Execute the delete statement
             execution_obj = session.execute(stmt)
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Removed rows from related table",
                 rowcount=execution_obj.rowcount,
                 cls=cls,
@@ -3264,7 +3273,7 @@ class SQLDB(DBInterface):
             )
 
         total_deleted = self._delete_table_in_batches(session, main_table, where_clause)
-        logger.info(
+        mlrun.utils.logger.info(
             "Completed deletion",
             deletions_count=total_deleted,
             main_table=main_table,
@@ -3315,7 +3324,7 @@ class SQLDB(DBInterface):
             last_id = id_values[-1]
             total_deleted += result.rowcount
 
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Deleted batch from table",
                 batch_size=len(id_values),
                 total_deleted=total_deleted,
@@ -3336,7 +3345,9 @@ class SQLDB(DBInterface):
         return schedule_record
 
     def _delete_project_feature_vectors(self, session: Session, project: str):
-        logger.debug("Removing project feature-vectors from db", project=project)
+        mlrun.utils.logger.debug(
+            "Removing project feature-vectors from db", project=project
+        )
         self._delete_multi_objects(
             session=session,
             main_table=FeatureVector,
@@ -3388,7 +3399,9 @@ class SQLDB(DBInterface):
 
     # ---- Projects ----
     def create_project(self, session: Session, project: mlrun.common.schemas.Project):
-        logger.debug("Creating project in DB", project_name=project.metadata.name)
+        mlrun.utils.logger.debug(
+            "Creating project in DB", project_name=project.metadata.name
+        )
         created = datetime.utcnow()
         project.metadata.created = created
         # TODO: handle taking out the functions/workflows/artifacts out of the project and save them separately
@@ -3425,7 +3438,7 @@ class SQLDB(DBInterface):
     def store_project(
         self, session: Session, name: str, project: mlrun.common.schemas.Project
     ):
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Storing project in DB",
             name=name,
             project_metadata=project.metadata,
@@ -3460,7 +3473,9 @@ class SQLDB(DBInterface):
         project: dict,
         patch_mode: mlrun.common.schemas.PatchMode = mlrun.common.schemas.PatchMode.replace,
     ):
-        logger.debug("Patching project in DB", name=name, patch_mode=patch_mode)
+        mlrun.utils.logger.debug(
+            "Patching project in DB", name=name, patch_mode=patch_mode
+        )
         project_record = self._get_project_record(session, name)
         self._patch_project_record_from_project(
             session, name, project_record, project, patch_mode
@@ -3482,7 +3497,7 @@ class SQLDB(DBInterface):
         name: str,
         deletion_strategy: mlrun.common.schemas.DeletionStrategy = mlrun.common.schemas.DeletionStrategy.default(),
     ):
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Deleting project from DB", name=name, deletion_strategy=deletion_strategy
         )
         self._delete_project_summary(session, name)
@@ -3623,7 +3638,7 @@ class SQLDB(DBInterface):
         # any associated projects.
         if orphaned_summaries:
             projects_names = [summary.project for summary in orphaned_summaries]
-            logger.debug(
+            mlrun.utils.logger.debug(
                 "Deleting project summaries that do not have associated projects",
                 projects=projects_names,
             )
@@ -3638,7 +3653,7 @@ class SQLDB(DBInterface):
         session: Session,
         name: str,
     ):
-        logger.debug("Deleting project summary from DB", name=name)
+        mlrun.utils.logger.debug("Deleting project summary from DB", name=name)
         self._delete(session, ProjectSummary, project=name)
 
     async def get_project_resources_counters(
@@ -4174,7 +4189,7 @@ class SQLDB(DBInterface):
     ) -> str:
         feature_set_record = self._get_feature_set(session, project, name, tag, uid)
         if not feature_set_record:
-            feature_set_uri = generate_object_uri(project, name, tag)
+            feature_set_uri = mlrun.utils.generate_object_uri(project, name, tag)
             raise mlrun.errors.MLRunNotFoundError(
                 f"Feature-set not found {feature_set_uri}"
             )
@@ -4209,7 +4224,7 @@ class SQLDB(DBInterface):
     ) -> mlrun.common.schemas.FeatureSet:
         feature_set = self._get_feature_set(session, project, name, tag, uid)
         if not feature_set:
-            feature_set_uri = generate_object_uri(project, name, tag)
+            feature_set_uri = mlrun.utils.generate_object_uri(project, name, tag)
             raise mlrun.errors.MLRunNotFoundError(
                 f"Feature-set not found {feature_set_uri}"
             )
@@ -4427,10 +4442,10 @@ class SQLDB(DBInterface):
             feature_set_index = len(feature_set_id_to_index)
             feature_set_id_to_index[feature_set_obj_id] = feature_set_index
             feature_set_digests_v2.append(
-                FeatureSetDigestOutputV2(
+                mlrun.common.schemas.feature_store.FeatureSetDigestOutputV2(
                     feature_set_index=feature_set_index,
                     metadata=feature_set.metadata,
-                    spec=FeatureSetDigestSpecV2(
+                    spec=mlrun.common.schemas.feature_store.FeatureSetDigestSpecV2(
                         entities=feature_set.spec.entities,
                     ),
                 )
@@ -4473,7 +4488,9 @@ class SQLDB(DBInterface):
             query = query.join(FeatureSet.entities).filter(Entity.name.in_(entities))
 
         features_with_feature_set_index: list[Feature] = []
-        feature_set_digests_v2: list[FeatureSetDigestOutputV2] = []
+        feature_set_digests_v2: list[
+            mlrun.common.schemas.feature_store.FeatureSetDigestOutputV2
+        ] = []
         feature_set_digest_id_to_index: dict[int, int] = {}
 
         transform_feature_set_model_to_schema = MemoizationCache(
@@ -4597,7 +4614,9 @@ class SQLDB(DBInterface):
         )
 
         entities_with_feature_set_index: list[Entity] = []
-        feature_set_digests_v2: list[FeatureSetDigestOutputV2] = []
+        feature_set_digests_v2: list[
+            mlrun.common.schemas.feature_store.FeatureSetDigestOutputV2
+        ] = []
         feature_set_digest_id_to_index: dict[int, int] = {}
 
         transform_feature_set_model_to_schema = MemoizationCache(
@@ -4877,7 +4896,6 @@ class SQLDB(DBInterface):
                 entity = Entity(
                     name=entity_dict["name"],
                     value_type=entity_dict["value_type"],
-                    labels=[],
                 )
                 update_labels(entity, labels)
                 feature_set.entities.append(entity)
@@ -4898,7 +4916,7 @@ class SQLDB(DBInterface):
         versioned,
         existing_uid=None,
     ):
-        uid = fill_object_hash(object_dict, "uid", tag)
+        uid = mlrun.utils.fill_object_hash(object_dict, "uid", tag)
         if not versioned:
             uid = f"{unversioned_tagged_object_uid_prefix}{tag}"
             object_dict["metadata"]["uid"] = uid
@@ -5097,7 +5115,9 @@ class SQLDB(DBInterface):
         object_type = new_object.__class__.__name__
 
         object_dict = new_object.dict(exclude_none=True)
-        hash_key = fill_object_hash(object_dict, "uid", new_object.metadata.tag)
+        hash_key = mlrun.utils.fill_object_hash(
+            object_dict, "uid", new_object.metadata.tag
+        )
 
         if versioned:
             uid = hash_key
@@ -5109,7 +5129,7 @@ class SQLDB(DBInterface):
             session, db_class, new_object.metadata.name, project, uid
         )
         if existing_object:
-            object_uri = generate_object_uri(
+            object_uri = mlrun.utils.generate_object_uri(
                 project, new_object.metadata.name, new_object.metadata.tag
             )
             raise mlrun.errors.MLRunConflictError(
@@ -5119,7 +5139,9 @@ class SQLDB(DBInterface):
         return uid, new_object.metadata.tag, object_dict
 
     def _delete_project_feature_sets(self, session: Session, project: str):
-        logger.debug("Removing project feature-sets from db", project=project)
+        mlrun.utils.logger.debug(
+            "Removing project feature-sets from db", project=project
+        )
         self._delete_multi_objects(
             session=session,
             main_table=FeatureSet,
@@ -5181,7 +5203,7 @@ class SQLDB(DBInterface):
     ) -> mlrun.common.schemas.FeatureVector:
         feature_vector = self._get_feature_vector(session, project, name, tag, uid)
         if not feature_vector:
-            feature_vector_uri = generate_object_uri(project, name, tag)
+            feature_vector_uri = mlrun.utils.generate_object_uri(project, name, tag)
             raise mlrun.errors.MLRunNotFoundError(
                 f"Feature-vector not found {feature_vector_uri}"
             )
@@ -5325,7 +5347,7 @@ class SQLDB(DBInterface):
             session, project, name, tag, uid
         )
         if not feature_vector_record:
-            feature_vector_uri = generate_object_uri(project, name, tag)
+            feature_vector_uri = mlrun.utils.generate_object_uri(project, name, tag)
             raise mlrun.errors.MLRunNotFoundError(
                 f"Feature-vector not found {feature_vector_uri}"
             )
@@ -5653,7 +5675,7 @@ class SQLDB(DBInterface):
 
                 # if the database is locked, we raise a retryable error
                 if "database is locked" in str(sql_err):
-                    logger.warning(
+                    mlrun.utils.logger.warning(
                         "Database is locked. Retrying",
                         classes_to_commit=classes,
                         err=str(sql_err),
@@ -5665,10 +5687,10 @@ class SQLDB(DBInterface):
                 # the error is not retryable, so we try to identify weather there was a conflict or not
                 # either way - we wrap the error with a fatal error so the retry mechanism will stop
                 if not silent:
-                    logger.warning(
+                    mlrun.utils.logger.warning(
                         "Failed committing changes to DB",
                         classes=classes,
-                        err=err_to_str(sql_err),
+                        err=mlrun.errors.err_to_str(sql_err),
                     )
                 if not ignore:
                     # get the identifiers of the objects that failed to commit, for logging purposes
@@ -5706,11 +5728,11 @@ class SQLDB(DBInterface):
                             original_exception=exc
                         )
 
-        if config.httpdb.db.commit_retry_timeout:
+        if mlrun.config.config.httpdb.db.commit_retry_timeout:
             mlrun.utils.helpers.retry_until_successful(
-                config.httpdb.db.commit_retry_interval,
-                config.httpdb.db.commit_retry_timeout,
-                logger,
+                mlrun.config.config.httpdb.db.commit_retry_interval,
+                mlrun.config.config.httpdb.db.commit_retry_timeout,
+                mlrun.utils.logger,
                 False,
                 _try_commit_obj,
             )
@@ -5906,7 +5928,9 @@ class SQLDB(DBInterface):
             query = query.filter(ModelEndpoint.uid.in_(uids))
         if top_level:
             query = query.filter(
-                ModelEndpoint.endpoint_type.in_(EndpointType.top_level_list())
+                ModelEndpoint.endpoint_type.in_(
+                    mlrun.common.schemas.model_monitoring.EndpointType.top_level_list()
+                )
             )
 
         # Apply function-related filters
@@ -5962,7 +5986,9 @@ class SQLDB(DBInterface):
             try:
                 query = query.order_by(getattr(ModelEndpoint, order_by).asc())
             except AttributeError as err:
-                logger.warning("Skipping order by", error=mlrun.errors.err_to_str(err))
+                mlrun.utils.logger.warning(
+                    "Skipping order by", error=mlrun.errors.err_to_str(err)
+                )
 
         return query
 
@@ -6098,13 +6124,15 @@ class SQLDB(DBInterface):
         format_: mlrun.common.formatters.ModelEndpointFormat = mlrun.common.formatters.ModelEndpointFormat.full,
     ) -> mlrun.common.schemas.ModelEndpoint:
         model_endpoint_full_dict = model_endpoint_record.struct
-        model_endpoint_full_dict[ModelEndpointSchema.UPDATED] = (
-            model_endpoint_record.updated
-        )
-        model_endpoint_full_dict[ModelEndpointSchema.CREATED] = (
-            model_endpoint_record.created
-        )
-        model_endpoint_full_dict[ModelEndpointSchema.UID] = model_endpoint_record.uid
+        model_endpoint_full_dict[
+            mlrun.common.schemas.model_monitoring.ModelEndpointSchema.UPDATED
+        ] = model_endpoint_record.updated
+        model_endpoint_full_dict[
+            mlrun.common.schemas.model_monitoring.ModelEndpointSchema.CREATED
+        ] = model_endpoint_record.created
+        model_endpoint_full_dict[
+            mlrun.common.schemas.model_monitoring.ModelEndpointSchema.UID
+        ] = model_endpoint_record.uid
         model_endpoint_full_dict = self._fill_model_endpoint_with_function_data(
             model_endpoint_record,
             model_endpoint_full_dict,
@@ -6133,28 +6161,36 @@ class SQLDB(DBInterface):
         latest: bool,
     ) -> dict:
         if model_endpoint_record.function and latest:
-            model_endpoint_full_dict[ModelEndpointSchema.FUNCTION_NAME] = (
-                model_endpoint_record.function.name
-            )
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.FUNCTION_NAME
+            ] = model_endpoint_record.function.name
             function_tag_list = model_endpoint_record.function.tags
-            model_endpoint_full_dict[ModelEndpointSchema.FUNCTION_TAG] = (
-                self._get_function_tag(function_tag_list)
-            )
-            model_endpoint_full_dict[ModelEndpointSchema.STATE] = (
-                model_endpoint_record.function.state
-            )
-            model_endpoint_full_dict[ModelEndpointSchema.FUNCTION_URI] = (
-                generate_object_uri(
-                    project=model_endpoint_record.function.project,
-                    name=model_endpoint_record.function.name,
-                    hash_key=model_endpoint_record.function.uid,
-                )
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.FUNCTION_TAG
+            ] = self._get_function_tag(function_tag_list)
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.STATE
+            ] = model_endpoint_record.function.state
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.FUNCTION_URI
+            ] = mlrun.utils.generate_object_uri(
+                project=model_endpoint_record.function.project,
+                name=model_endpoint_record.function.name,
+                hash_key=model_endpoint_record.function.uid,
             )
         else:
-            model_endpoint_full_dict[ModelEndpointSchema.FUNCTION_NAME] = ""
-            model_endpoint_full_dict[ModelEndpointSchema.FUNCTION_TAG] = ""
-            model_endpoint_full_dict[ModelEndpointSchema.STATE] = "unknown"
-            model_endpoint_full_dict[ModelEndpointSchema.FUNCTION_URI] = None
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.FUNCTION_NAME
+            ] = ""
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.FUNCTION_TAG
+            ] = ""
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.STATE
+            ] = "unknown"
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.FUNCTION_URI
+            ] = None
         return model_endpoint_full_dict
 
     def _get_function_tag(self, function_tag_list):
@@ -6178,14 +6214,16 @@ class SQLDB(DBInterface):
         model_endpoint_record: ModelEndpoint, model_endpoint_full_dict: dict
     ) -> dict:
         if model := model_endpoint_record.model:
-            model_endpoint_full_dict[ModelEndpointSchema.MODEL_NAME] = model.key
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_NAME
+            ] = model.key
             model_tags = model.tags
-            model_endpoint_full_dict[ModelEndpointSchema.MODEL_TAGS] = (
-                [tag.name for tag in model_tags] if model_tags else []
-            )
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_TAGS
+            ] = [tag.name for tag in model_tags] if model_tags else []
             model_artifact_uri = mlrun.datastore.get_store_uri(
                 kind=mlrun.utils.helpers.StorePrefix.Model,
-                uri=generate_artifact_uri(
+                uri=mlrun.utils.generate_artifact_uri(
                     project=model.project,
                     key=model.key,
                     iter=model.iteration,
@@ -6194,11 +6232,19 @@ class SQLDB(DBInterface):
                 ),
             )
 
-            model_endpoint_full_dict[ModelEndpointSchema.MODEL_URI] = model_artifact_uri
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_URI
+            ] = model_artifact_uri
         else:
-            model_endpoint_full_dict[ModelEndpointSchema.MODEL_NAME] = ""
-            model_endpoint_full_dict[ModelEndpointSchema.MODEL_TAGS] = []
-            model_endpoint_full_dict[ModelEndpointSchema.MODEL_URI] = None
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_NAME
+            ] = ""
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_TAGS
+            ] = []
+            model_endpoint_full_dict[
+                mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_URI
+            ] = None
         return model_endpoint_full_dict
 
     def _transform_project_record_to_schema(
@@ -6365,7 +6411,7 @@ class SQLDB(DBInterface):
     def create_hub_source(
         self, session, ordered_source: mlrun.common.schemas.IndexedHubSource
     ):
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Creating hub source in DB",
             index=ordered_source.index,
             name=ordered_source.source.metadata.name,
@@ -6391,7 +6437,9 @@ class SQLDB(DBInterface):
         name,
         ordered_source: mlrun.common.schemas.IndexedHubSource,
     ):
-        logger.debug("Storing hub source in DB", index=ordered_source.index, name=name)
+        mlrun.utils.logger.debug(
+            "Storing hub source in DB", index=ordered_source.index, name=name
+        )
 
         if name != ordered_source.source.metadata.name:
             raise mlrun.errors.MLRunInvalidArgumentError(
@@ -6429,7 +6477,7 @@ class SQLDB(DBInterface):
         return self._query(session, HubSource).all()
 
     def delete_hub_source(self, session, name):
-        logger.debug("Deleting hub source from DB", name=name)
+        mlrun.utils.logger.debug("Deleting hub source from DB", name=name)
 
         source_record = self._query(session, HubSource, name=name).one_or_none()
         if not source_record:
@@ -6452,7 +6500,11 @@ class SQLDB(DBInterface):
             session, HubSource, name=name, index=index
         ).one_or_none()
         if not source_record:
-            log_method = logger.warning if raise_on_not_found else logger.debug
+            log_method = (
+                mlrun.utils.logger.warning
+                if raise_on_not_found
+                else mlrun.utils.logger.debug
+            )
             message = f"Hub source not found. name = {name}"
             log_method(message)
             if raise_on_not_found:
@@ -6473,7 +6525,11 @@ class SQLDB(DBInterface):
             .one_or_none()
         )
         if not current_data_version_record:
-            log_method = logger.warning if raise_on_not_found else logger.debug
+            log_method = (
+                mlrun.utils.logger.warning
+                if raise_on_not_found
+                else mlrun.utils.logger.debug
+            )
             message = "No data version found"
             log_method(message)
             if raise_on_not_found:
@@ -6484,7 +6540,7 @@ class SQLDB(DBInterface):
             return None
 
     def create_data_version(self, session, version):
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Creating data version in DB",
             version=version,
         )
@@ -6652,7 +6708,7 @@ class SQLDB(DBInterface):
         alert_ids = []
         last_id = None
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Deleting project alerts from db in chunks",
             project=project,
             chunk_size=chunk_size,
@@ -6692,7 +6748,7 @@ class SQLDB(DBInterface):
             # Step 3: Commit all changes in one transaction for the current chunk
             session.commit()
 
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Successfully deleted project alerts from db",
             project=project,
             number_of_deleted_alerts=len(alert_ids),
@@ -6794,7 +6850,7 @@ class SQLDB(DBInterface):
         """
         dialect = session.bind.dialect.name
 
-        if dialect == Dialects.MYSQL:
+        if dialect == mlrun.common.db.sql_session.Dialects.MYSQL:
             # Pull back existing partition descriptions
             query = text("""
                 SELECT PARTITION_DESCRIPTION
@@ -6819,7 +6875,7 @@ class SQLDB(DBInterface):
             if not new_partitions:
                 return
 
-            logger.info(
+            mlrun.utils.logger.info(
                 "Creating new partitions for table %s: %s",
                 table_name,
                 new_partitions,
@@ -6834,7 +6890,7 @@ class SQLDB(DBInterface):
             # No commit needed here, as DDL commands in MySQL cause an implicit commit
             session.execute(text(alter_sql))
 
-        elif dialect.startswith(Dialects.POSTGRESQL):
+        elif dialect.startswith(mlrun.common.db.sql_session.Dialects.POSTGRESQL):
             # Get existing child partition names
             query = text("""
                     SELECT inhrelid::regclass::text AS partition_name
@@ -6853,7 +6909,7 @@ class SQLDB(DBInterface):
             if not new_partitions:
                 return
 
-            logger.info(
+            mlrun.utils.logger.info(
                 "Creating new Postgres partitions for table %s: %s",
                 table_name,
                 new_partitions,
@@ -6877,7 +6933,7 @@ class SQLDB(DBInterface):
                 session.execute(ddl)
             session.commit()
         else:
-            logger.warning(
+            mlrun.utils.logger.warning(
                 "Partitioning not implemented for dialect '%s', skipping",
                 dialect,
             )
@@ -6920,7 +6976,7 @@ class SQLDB(DBInterface):
             )
 
             # Log the partitions to be dropped for reference
-            logger.debug(
+            mlrun.utils.logger.debug(
                 f"Dropping partitions for table {table_name}: {partitions_to_drop_str}"
             )
 
@@ -7485,7 +7541,9 @@ class SQLDB(DBInterface):
         return self._query(session, BackgroundTask, project=project)
 
     def _delete_project_background_tasks(self, session: Session, project: str):
-        logger.debug("Removing project background tasks from db", project=project)
+        mlrun.utils.logger.debug(
+            "Removing project background tasks from db", project=project
+        )
         self._delete_multi_objects(
             session=session,
             main_table=BackgroundTask,
@@ -7584,7 +7642,7 @@ class SQLDB(DBInterface):
             notification.sent_time = notification_model.sent_time
             notification.reason = notification_model.reason
 
-            logger.debug(
+            mlrun.utils.logger.debug(
                 f"Storing {'new' if new_notification else 'existing'} notification",
                 notification_name=notification.name,
                 notification_status=notification.status,
@@ -7776,7 +7834,9 @@ class SQLDB(DBInterface):
         :param project: Name of the project
         :returns: None
         """
-        logger.debug("Removing project datastore profiles from db", project=project)
+        mlrun.utils.logger.debug(
+            "Removing project datastore profiles from db", project=project
+        )
         self._delete_multi_objects(
             session=session,
             main_table=DatastoreProfile,
@@ -7963,7 +8023,7 @@ class SQLDB(DBInterface):
         else:
             obj_name_suffix = None
         mep = self._create_mep_record_to_store(model_endpoint, function_record)
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Storing Model Endpoint Before upsert",
             metadata=model_endpoint.metadata,
         )
@@ -8019,7 +8079,7 @@ class SQLDB(DBInterface):
             raise mlrun.errors.MLRunInvalidArgumentError(
                 "Model endpoint name and project must be provided"
             )
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Storing Model Endpoint to DB",
             metadata=model_endpoint.metadata,
         )
@@ -8118,13 +8178,13 @@ class SQLDB(DBInterface):
         )
         struct = mep_record.struct
         for key, val in attributes.items():
-            update_in(struct, key, val)
+            mlrun.utils.update_in(struct, key, val)
         for key, val in schema_attr.items():
             setattr(mep_record, key, val)
-            update_in(struct, key, val)
+            mlrun.utils.update_in(struct, key, val)
         if labels is not None and isinstance(labels, dict):
             update_labels(mep_record, labels)
-            update_in(struct, "labels", labels)
+            mlrun.utils.update_in(struct, "labels", labels)
         if model_path is not None:
             self._update_model_link(session, mep_record, model_path)
         mep_record.struct = struct
@@ -8134,10 +8194,17 @@ class SQLDB(DBInterface):
     def _split_mep_update_attr(self, attributes: dict):
         if "labels" in attributes:
             # labels can be None, so if labels key exists, return {} and override existing labels.
-            labels = attributes.pop(ModelEndpointSchema.LABELS) or {}
+            labels = (
+                attributes.pop(
+                    mlrun.common.schemas.model_monitoring.ModelEndpointSchema.LABELS
+                )
+                or {}
+            )
         else:
             labels = None
-        model_path = attributes.pop(ModelEndpointSchema.MODEL_PATH, "")
+        model_path = attributes.pop(
+            mlrun.common.schemas.model_monitoring.ModelEndpointSchema.MODEL_PATH, ""
+        )
         schema_attr = {}
         for key in list(attributes.keys()):
             if hasattr(ModelEndpoint, key):
@@ -8214,7 +8281,7 @@ class SQLDB(DBInterface):
         uid: typing.Optional[str] = None,
     ) -> None:
         self._check_model_endpoint_params(uid, function_name, function_tag)
-        logger.debug(
+        mlrun.utils.logger.debug(
             "Removing model endpoint from db", project=project, name=name, uid=uid
         )
 
@@ -8252,7 +8319,7 @@ class SQLDB(DBInterface):
         project: str,
         uids: typing.Optional[list[str]] = None,
     ) -> None:
-        logger.debug("Removing model endpoints from db", project=project)
+        mlrun.utils.logger.debug("Removing model endpoints from db", project=project)
 
         self._delete_multi_objects(
             session=session,
@@ -8269,7 +8336,7 @@ class SQLDB(DBInterface):
         project: str,
         uids: typing.Optional[list[str]] = None,
     ) -> None:
-        logger.debug("Removing feature sets from db", project=project)
+        mlrun.utils.logger.debug("Removing feature sets from db", project=project)
 
         self._delete_multi_objects(
             session=session,
@@ -8289,7 +8356,7 @@ class SQLDB(DBInterface):
         return system_id_record.value if system_id_record else None
 
     def store_system_id(self, session: Session, system_id: str):
-        logger.debug("Storing a new system id in DB", system_id=system_id)
+        mlrun.utils.logger.debug("Storing a new system id in DB", system_id=system_id)
 
         system_id_record = SystemMetadata(
             key=framework.constants.SYSTEM_ID_KEY, value=system_id
@@ -8341,7 +8408,7 @@ class SQLDB(DBInterface):
             raise mlrun.errors.MLRunNotFoundError(
                 f"Table not found: {sanitized_table_name}"
             )
-        logger.warning(
+        mlrun.utils.logger.warning(
             "Table not found, skipping delete",
             table_name=sanitized_table_name,
         )
@@ -8406,7 +8473,7 @@ class SQLDB(DBInterface):
     def _update_model_link(self, session, mep_record: ModelEndpoint, model_path: str):
         if mlrun.datastore.is_store_uri(model_path):
             _, model_uri = mlrun.datastore.parse_store_uri(model_path)
-            project, key, iteration, tag, tree, uid = parse_artifact_uri(
+            project, key, iteration, tag, tree, uid = mlrun.utils.parse_artifact_uri(
                 model_uri, mep_record.project
             )
             db_artifact = self.read_artifact(

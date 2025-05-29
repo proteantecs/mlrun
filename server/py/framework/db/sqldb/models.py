@@ -18,7 +18,6 @@ import pickle
 import uuid
 import warnings
 from datetime import datetime, timezone
-from typing import Optional
 
 import orjson
 from sqlalchemy import (

@@ -24,7 +24,6 @@ from sqlalchemy import (
     BOOLEAN,
     JSON,
     Column,
-    Connection,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -35,6 +34,7 @@ from sqlalchemy import (
     event,
     text,
 )
+from sqlalchemy.engine import Connection
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Mapper, declared_attr, relationship
 

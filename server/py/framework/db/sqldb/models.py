@@ -37,11 +37,18 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Mapped, Mapper, declared_attr, mapped_column, relationship
+from sqlalchemy.orm import Mapper, declared_attr, relationship
 
 import mlrun.common.schemas
-import mlrun.db.sql_types
 import mlrun.utils.db
+from mlrun.common.schemas import partition
+from mlrun.db.sql_types import (
+    Blob,
+    DateTime,
+    MicroSecondDateTime,
+    Utf8BinText,
+    UuidType,
+)
 
 Base = declarative_base()
 NULL = None  # Avoid flake8 issuing warnings when comparing in filter
@@ -75,18 +82,11 @@ def make_label(parent_cls):
             Index(f"idx_{table}_labels_name_value", "name", "value"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        value: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        value = Column(Utf8BinText)
 
-        parent: Mapped[Optional[int]] = mapped_column(
+        parent = Column(
             Integer,
             ForeignKey(
                 f"{table}.id",
@@ -117,19 +117,11 @@ def make_tag(parent_cls):
             UniqueConstraint("project", "name", "obj_id", name=f"_{table}_tags_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        name: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        id = Column(Integer, primary_key=True)
+        project = Column(Utf8BinText)
+        name = Column(Utf8BinText)
 
-        obj_id: Mapped[Optional[int]] = mapped_column(
+        obj_id = Column(
             Integer,
             ForeignKey(
                 f"{table}.id",
@@ -174,25 +166,15 @@ def make_tag_v2(parent_cls):
             UniqueConstraint("project", "name", "obj_name", name=f"_{table}_tags_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        name: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        obj_id: Mapped[Optional[int]] = mapped_column(
+        id = Column(Integer, primary_key=True)
+        project = Column(Utf8BinText)
+        name = Column(Utf8BinText)
+        obj_id = Column(
             Integer,
             ForeignKey(f"{table}.id", ondelete="CASCADE"),
             nullable=True,
         )
-        obj_name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        obj_name = Column(Utf8BinText)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
@@ -228,7 +210,7 @@ def make_artifact_tag(cls):
     For artifacts, we cannot use tag_v2 because different artifacts with the same key can have the same tag.
     therefore we need to use the obj_id as the unique constraint.
     """
-    table = cls.__tablename__
+    table = cls.__tablename__  # "artifacts_v2"
 
     class ArtifactTag(Base, mlrun.utils.db.BaseModel):
         __tablename__ = f"{table}_tags"
@@ -248,24 +230,14 @@ def make_artifact_tag(cls):
             ),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        project: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        obj_id: Mapped[Optional[int]] = mapped_column(
+        id = Column(Integer, primary_key=True)
+        project = Column(Utf8BinText)
+        name = Column(Utf8BinText)
+        obj_id = Column(
             Integer,
             nullable=True,
         )
-        obj_name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        obj_name = Column(Utf8BinText)
 
         parent_rel = relationship(
             cls,
@@ -305,40 +277,17 @@ def make_notification(cls):
             UniqueConstraint("name", "parent_id", name=f"_{table}_notifications_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        kind: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        message: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        severity: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        when: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        condition: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        secret_params: Mapped[dict] = mapped_column(
-            "secret_params",
-            JSON,
-        )
-        params: Mapped[dict] = mapped_column(
-            "params",
-            JSON,
-        )
-        parent_id: Mapped[int] = mapped_column(
+        id = Column(Integer, primary_key=True)
+        project = Column(Utf8BinText)
+        name = Column(Utf8BinText, nullable=False)
+        kind = Column(Utf8BinText, nullable=False)
+        message = Column(Utf8BinText, nullable=False)
+        severity = Column(Utf8BinText, nullable=False)
+        when = Column(Utf8BinText, nullable=False)
+        condition = Column(Utf8BinText, nullable=False)
+        secret_params = Column("secret_params", JSON)
+        params = Column("params", JSON)
+        parent_id = Column(
             Integer,
             ForeignKey(f"{table}.id", ondelete="CASCADE"),
             nullable=False,
@@ -350,17 +299,9 @@ def make_notification(cls):
         #   In the future, we might want to support multiple notifications per DB row, and we might want to support on
         #   start, therefore we need to separate the state from the notification itself (e.g. this table can be  table
         #   with notification_id, state, when, last_sent, etc.). This will require some refactoring in the code.
-        sent_time: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime,
-            nullable=True,
-        )
-        status: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        reason: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        sent_time = Column(DateTime, nullable=True)
+        status = Column(Utf8BinText, nullable=False)
+        reason = Column(Utf8BinText, nullable=True)
 
     return Notification
 
@@ -411,27 +352,13 @@ with warnings.catch_warnings():
             UniqueConstraint("uid", "project", "key", name="_artifacts_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        key: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        uid: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        updated: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime,
-            nullable=True,
-        )
+        id = Column(Integer, primary_key=True)
+        key = Column(Utf8BinText)
+        project = Column(Utf8BinText)
+        uid = Column(Utf8BinText)
+        updated = Column(DateTime)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
-        body: Mapped[bytes] = mapped_column(
-            mlrun.db.sql_types.Blob,
-        )
+        body = Column(Blob)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.key}/{self.uid}"
@@ -462,70 +389,24 @@ with warnings.catch_warnings():
             Index("idx_project_bi_updated", "project", "best_iteration", "updated"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        key: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            index=True,
-        )
-        project: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        kind: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            index=True,
-            nullable=True,
-        )
-        producer_id: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        producer_uri: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        iteration: Mapped[Optional[int]] = mapped_column(
-            Integer,
-            nullable=True,
-        )
-        best_iteration: Mapped[bool] = mapped_column(
-            BOOLEAN,
-            default=False,
-            index=True,
-        )
-        uid: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        parent_id: Mapped[Optional[int]] = mapped_column(
-            Integer,
-            ForeignKey("artifacts_v2.id", ondelete="SET NULL"),
-            nullable=True,
-            index=True,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        key = Column(Utf8BinText, index=True)
+        project = Column(Utf8BinText)
+        kind = Column(Utf8BinText, index=True)
+        producer_id = Column(Utf8BinText)
+        producer_uri = Column(Utf8BinText)
+        iteration = Column(Integer)
+        best_iteration = Column(BOOLEAN, default=False, index=True)
+        uid = Column(Utf8BinText)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        updated: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        updated = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
-            nullable=True,
         )
-        _full_object: Mapped[bytes] = mapped_column(
-            "object",
-            mlrun.db.sql_types.Blob,
-        )
-
-        parent = relationship(
-            "ArtifactV2",
-            remote_side=[id],
-            backref="child_artifacts",
-            passive_deletes=True,
-        )
+        _full_object = Column("object", Blob)
 
         @property
         def full_object(self):
@@ -557,37 +438,15 @@ with warnings.catch_warnings():
             UniqueConstraint("name", "project", "uid", name="_functions_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        uid: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        kind: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        state: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        project = Column(Utf8BinText)
+        uid = Column(Utf8BinText)
+        kind = Column(Utf8BinText)
+        state = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
-        body: Mapped[bytes] = mapped_column(
-            mlrun.db.sql_types.Blob,
-        )
-        updated: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime,
-            nullable=True,
-        )
+        body = Column(Blob)
+        updated = Column(DateTime)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
@@ -599,49 +458,22 @@ with warnings.catch_warnings():
             Index("idx_runs_project_id", "id", "project", unique=True),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        uid: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, default="no-name"
-        )
-        iteration: Mapped[int] = mapped_column(
-            Integer,
-        )
-        state: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        id = Column(Integer, primary_key=True)
+        uid = Column(Utf8BinText)
+        project = Column(Utf8BinText)
+        name = Column(Utf8BinText, default="no-name")
+        iteration = Column(Integer)
+        state = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
-        body: Mapped[bytes] = mapped_column(
-            mlrun.db.sql_types.Blob,
-        )
-        start_time: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
-        )
-        end_time: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.MicroSecondDateTime,
-            nullable=True,
-        )
-        updated: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime, default=datetime.utcnow
-        )
+        body = Column(Blob)
+        start_time = Column(DateTime)
+        end_time = Column(MicroSecondDateTime)
+        updated = Column(DateTime, default=datetime.utcnow)
         # requested logs column indicates whether logs were requested for this run
         # None - old runs prior to the column addition, logs were already collected for them, so no need to collect them
         # False - logs were not requested for this run
         # True - logs were requested for this run
-        requested_logs: Mapped[bool] = mapped_column(
-            BOOLEAN,
-            default=False,
-            index=True,
-        )
+        requested_logs = Column(BOOLEAN, default=False, index=True)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.uid}/{self.iteration}"
@@ -652,35 +484,20 @@ with warnings.catch_warnings():
             UniqueConstraint("name", "project", name="_background_tasks_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText, nullable=False)
+        project = Column(Utf8BinText, nullable=False)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        updated: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        updated = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        state: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        error: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        timeout: Mapped[Optional[int]] = mapped_column(
-            Integer,
-            nullable=True,
-        )
+        state = Column(Utf8BinText)
+        error = Column(Utf8BinText)
+        timeout = Column(Integer)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
@@ -689,51 +506,20 @@ with warnings.catch_warnings():
         __tablename__ = "schedules_v2"
         __table_args__ = (UniqueConstraint("project", "name", name="_schedules_v2_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        kind: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        desired_state: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        state: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        creation_time: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
-        )
-        cron_trigger_str: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        last_run_uri: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        id = Column(Integer, primary_key=True)
+        project = Column(Utf8BinText, nullable=False)
+        name = Column(Utf8BinText, nullable=False)
+        kind = Column(Utf8BinText)
+        desired_state = Column(Utf8BinText)
+        state = Column(Utf8BinText)
+        creation_time = Column(DateTime)
+        cron_trigger_str = Column(Utf8BinText)
+        last_run_uri = Column(Utf8BinText)
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
-        struct: Mapped[bytes] = mapped_column(
-            mlrun.db.sql_types.Blob,
-        )
+        struct = Column(Blob)
 
-        concurrency_limit: Mapped[int] = mapped_column(
-            Integer,
-            nullable=False,
-        )
-        next_run_time: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime,
-            nullable=True,
-        )
+        concurrency_limit = Column(Integer, nullable=False)
+        next_run_time = Column(DateTime)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
@@ -766,13 +552,8 @@ with warnings.catch_warnings():
         __tablename__ = "users"
         __table_args__ = (UniqueConstraint("name", name="_users_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
 
         def get_identifier_string(self) -> str:
             return f"{self.name}"
@@ -782,46 +563,18 @@ with warnings.catch_warnings():
         # For now since we use project name a lot
         __table_args__ = (UniqueConstraint("name", name="_projects_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        description: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        owner: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        source: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        description = Column(Utf8BinText)
+        owner = Column(Utf8BinText)
+        source = Column(Utf8BinText)
         # the attribute name used to be _spec which is just a wrong naming, the attribute was renamed to _full_object
         # leaving the column as is to prevent redundant migration
         # TODO: change to JSON, see mlrun/common/schemas/function.py::FunctionState for reasoning
-        _full_object: Mapped[bytes] = mapped_column(
-            "spec",
-            mlrun.db.sql_types.Blob,
-            nullable=True,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime, default=datetime.now(tz=timezone.utc)
-        )
-        default_function_node_selector: Mapped[Optional[dict]] = mapped_column(
-            "default_function_node_selector",
-            JSON,
-            nullable=True,
-        )
-        state: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
+        _full_object = Column("spec", Blob)
+        created = Column(DateTime, default=datetime.utcnow)
+        default_function_node_selector = Column("default_function_node_selector", JSON)
+        state = Column(Utf8BinText)
         users = relationship(User, secondary=project_users)
 
         def get_identifier_string(self) -> str:
@@ -838,20 +591,13 @@ with warnings.catch_warnings():
 
     class Feature(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "features"
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        feature_set_id: Mapped[int] = mapped_column(
+        id = Column(Integer, primary_key=True)
+        feature_set_id = Column(
             Integer, ForeignKey("feature_sets.id", ondelete="CASCADE")
         )
 
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        value_type: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        name = Column(Utf8BinText)
+        value_type = Column(Utf8BinText)
 
         feature_set = relationship(
             "FeatureSet",
@@ -863,25 +609,21 @@ with warnings.catch_warnings():
 
     class Entity(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "entities"
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        feature_set_id: Mapped[int] = mapped_column(
+        id = Column(Integer, primary_key=True)
+        feature_set_id = Column(
             Integer, ForeignKey("feature_sets.id", ondelete="CASCADE")
         )
 
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        value_type: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        name = Column(Utf8BinText)
+        value_type = Column(Utf8BinText)
 
         feature_set = relationship(
             "FeatureSet",
             back_populates="entities",
         )
+
+        def get_identifier_string(self) -> str:
+            return f"{self.project}/{self.name}"
 
     class FeatureSet(Base, LabelMixin, TagV2Mixin, mlrun.utils.db.BaseModel):
         __tablename__ = "feature_sets"
@@ -889,36 +631,21 @@ with warnings.catch_warnings():
             UniqueConstraint("name", "project", "uid", name="_feature_set_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        project = Column(Utf8BinText)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        updated: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        updated = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        state: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        uid: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        state = Column(Utf8BinText)
+        uid = Column(Utf8BinText)
 
-        _full_object: Mapped[dict] = mapped_column(
-            "object",
-            JSON,
-        )
+        _full_object = Column("object", JSON)
 
         features = relationship(
             Feature,
@@ -952,35 +679,21 @@ with warnings.catch_warnings():
             UniqueConstraint("name", "project", "uid", name="_feature_vectors_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        project = Column(Utf8BinText)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        updated: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        updated = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        state: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        uid: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
+        state = Column(Utf8BinText)
+        uid = Column(Utf8BinText)
 
-        _full_object: Mapped[dict] = mapped_column(
-            "object",
-            JSON,
-        )
+        _full_object = Column("object", JSON)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.uid}"
@@ -999,30 +712,19 @@ with warnings.catch_warnings():
         __tablename__ = "hub_sources"
         __table_args__ = (UniqueConstraint("name", name="_hub_sources_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        index: Mapped[Optional[int]] = mapped_column(
-            Integer,
-            nullable=True,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        index = Column(Integer)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        updated: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        updated = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
 
-        _full_object: Mapped[dict] = mapped_column(
-            "object",
-            JSON,
-        )
+        _full_object = Column("object", JSON)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
@@ -1041,15 +743,10 @@ with warnings.catch_warnings():
         __tablename__ = "data_versions"
         __table_args__ = (UniqueConstraint("version", name="_versions_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        version: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        version = Column(Utf8BinText)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
 
@@ -1062,23 +759,11 @@ with warnings.catch_warnings():
             UniqueConstraint("name", "project", name="_datastore_profiles_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        type: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        _full_object: Mapped[dict] = mapped_column(
-            "object",
-            JSON,
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText)
+        project = Column(Utf8BinText)
+        type = Column(Utf8BinText)
+        _full_object = Column("object", JSON)
 
         @property
         def full_object(self):
@@ -1095,27 +780,14 @@ with warnings.catch_warnings():
     class PaginationCache(Base, mlrun.utils.db.BaseModel):
         __tablename__ = "pagination_cache"
 
-        key: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, primary_key=True
-        )
-        user: Mapped[Optional[str]] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=True,
-        )
-        function: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        current_page: Mapped[int] = mapped_column(
-            Integer,
-        )
-        page_size: Mapped[int] = mapped_column(
-            Integer,
-        )
-        kwargs: Mapped[dict] = mapped_column(
-            JSON,
-        )
-        last_accessed: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,  # TODO: change to `datetime`, see ML-6921
+        key = Column(Utf8BinText, primary_key=True)
+        user = Column(Utf8BinText)
+        function = Column(Utf8BinText)
+        current_page = Column(Integer)
+        page_size = Column(Integer)
+        kwargs = Column(JSON)
+        last_accessed = Column(
+            DateTime,  # TODO: change to `datetime`, see ML-6921
             default=lambda: datetime.now(timezone.utc),
         )
 
@@ -1126,37 +798,21 @@ with warnings.catch_warnings():
         __tablename__ = "alert_states"
         __table_args__ = (UniqueConstraint("parent_id", name="_alert_state_parent_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        count: Mapped[int] = mapped_column(
-            Integer,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,  # TODO: change to `datetime`, see ML-6921
+        id = Column(Integer, primary_key=True)
+        count = Column(Integer)
+        created = Column(
+            DateTime,  # TODO: change to `datetime`, see ML-6921
             default=lambda: datetime.now(timezone.utc),
         )
-        last_updated: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime,  # TODO: change to `datetime`, see ML-6921
+        last_updated = Column(
+            DateTime,  # TODO: change to `datetime`, see ML-6921
             default=None,
-            nullable=True,
         )
-        active: Mapped[bool] = mapped_column(
-            BOOLEAN,
-            default=False,
-        )
+        active = Column(BOOLEAN, default=False)
 
-        parent_id: Mapped[int] = mapped_column(
-            Integer,
-            ForeignKey("alert_configs.id"),
-        )
+        parent_id = Column(Integer, ForeignKey("alert_configs.id"))
 
-        _full_object: Mapped[Optional[dict]] = mapped_column(
-            "object",
-            JSON,
-            nullable=True,
-        )
+        _full_object = Column("object", JSON)
 
         @property
         def full_object(self):
@@ -1176,23 +832,13 @@ with warnings.catch_warnings():
             UniqueConstraint("project", "name", name="_alert_configs_uc"),
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText, nullable=False)
+        project = Column(Utf8BinText, nullable=False)
 
         alerts = relationship(AlertState, cascade="all, delete-orphan")
 
-        _full_object: Mapped[dict] = mapped_column(
-            "object",
-            JSON,
-        )
+        _full_object = Column("object", JSON)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
@@ -1210,18 +856,10 @@ with warnings.catch_warnings():
         __tablename__ = "alert_templates"
         __table_args__ = (UniqueConstraint("name", name="_alert_templates_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
+        id = Column(Integer, primary_key=True)
+        name = Column(Utf8BinText, nullable=False)
 
-        _full_object: Mapped[dict] = mapped_column(
-            "object",
-            JSON,
-        )
+        _full_object = Column("object", JSON)
 
         def get_identifier_string(self) -> str:
             return f"{self.name}"
@@ -1240,14 +878,12 @@ with warnings.catch_warnings():
 
         # partition setup at import
         _interval_name = os.getenv("PARTITION_INTERVAL", "YEARWEEK").upper()
-        if not mlrun.common.schemas.partition.PartitionInterval.is_valid(
-            _interval_name
-        ):
+        if not partition.PartitionInterval.is_valid(_interval_name):
             raise ValueError(
                 f"Partition interval must be one of: "
-                f"{mlrun.common.schemas.partition.PartitionInterval.valid_intervals()}"
+                f"{partition.PartitionInterval.valid_intervals()}"
             )
-        _interval = mlrun.common.schemas.partition.PartitionInterval(_interval_name)
+        _interval = partition.PartitionInterval(_interval_name)
         _expr = _interval.get_partition_expression(column_name="activation_time")
         _pname, _pval = _interval.get_partition_info(datetime.utcnow())[0]
 
@@ -1268,50 +904,24 @@ with warnings.catch_warnings():
             },
         )
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            autoincrement=True,
-            primary_key=True,
-        )
+        id = Column(Integer, autoincrement=True, primary_key=True)
         # Keep fsp=3 for activation_time as it is part of the primary key and partitioning logic,
         # ensuring stable indexing and avoiding potential inconsistencies.
         # This must remain unchanged to maintain compatibility with existing logic
         # and prevent unintended precision changes.
-        activation_time: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime(timezone=True), nullable=False
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText(), nullable=False
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText(), nullable=False
-        )
-        data: Mapped[dict] = mapped_column(
-            JSON,
-        )
-        entity_id: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText(), nullable=False
-        )
-        entity_kind: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText(), nullable=False
-        )
-        event_kind: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText(), nullable=False
-        )
-        severity: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText(), nullable=False
-        )
-        number_of_events: Mapped[int] = mapped_column(
-            Integer,
-            nullable=False,
-        )
+        activation_time = Column(DateTime(timezone=True), nullable=False)
+        name = Column(Utf8BinText(), nullable=False)
+        project = Column(Utf8BinText(), nullable=False)
+        data = Column(JSON)
+        entity_id = Column(Utf8BinText(), nullable=False)
+        entity_kind = Column(Utf8BinText(), nullable=False)
+        event_kind = Column(Utf8BinText(), nullable=False)
+        severity = Column(Utf8BinText(), nullable=False)
+        number_of_events = Column(Integer, nullable=False)
 
         # Similarly, keep fsp=3 for reset_time to ensure consistency with activation_time
         # and maintain compatibility with the existing system behavior.
-        reset_time: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.DateTime(timezone=True),
-            nullable=True,
-        )
+        reset_time = Column(DateTime(timezone=True), nullable=True)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}/{self.id}"
@@ -1320,20 +930,10 @@ with warnings.catch_warnings():
         __tablename__ = "project_summaries"
         __table_args__ = (UniqueConstraint("project", name="_project_summaries_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
-        updated: Mapped[Optional[datetime]] = mapped_column(
-            mlrun.db.sql_types.MicroSecondDateTime,
-            nullable=True,
-        )
-        summary: Mapped[dict] = mapped_column(
-            JSON,
-        )
+        id = Column(Integer, primary_key=True)
+        project = Column(Utf8BinText, nullable=False)
+        updated = Column(MicroSecondDateTime)
+        summary = Column(JSON)
 
         def get_identifier_string(self) -> str:
             return f"{self.project}"
@@ -1341,17 +941,13 @@ with warnings.catch_warnings():
     class TimeWindowTracker(Base, mlrun.utils.db.BaseModel):
         __tablename__ = "time_window_trackers"
 
-        key: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, primary_key=True
-        )
-        timestamp: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.MicroSecondDateTime,
+        key = Column(Utf8BinText, primary_key=True)
+        timestamp = Column(
+            MicroSecondDateTime,
             nullable=False,
             default=lambda: datetime.now(timezone.utc),
         )
-        max_window_size_seconds: Mapped[int] = mapped_column(
-            Integer,
-        )
+        max_window_size_seconds = Column(Integer)
 
         def get_identifier_string(self) -> str:
             return f"{self.key}"
@@ -1359,42 +955,28 @@ with warnings.catch_warnings():
     class ModelEndpoint(Base, LabelMixin, TagV2Mixin, mlrun.utils.db.HasStruct):
         __tablename__ = "model_endpoints"
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        uid: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.UuidType, default=lambda: uuid.uuid4().hex, unique=True
-        )
-        name: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        endpoint_type: Mapped[int] = mapped_column(
-            Integer,
-            nullable=False,
-        )
-        project: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-        )
-        body: Mapped[bytes] = mapped_column(
-            mlrun.db.sql_types.Blob,
-        )
-        created: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        id = Column(Integer, primary_key=True)
+        uid = Column(UuidType, default=lambda: uuid.uuid4().hex, unique=True)
+        name = Column(Utf8BinText)
+        endpoint_type = Column(Integer, nullable=False)
+        project = Column(Utf8BinText)
+        body = Column(Blob)
+        created = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        updated: Mapped[datetime] = mapped_column(
-            mlrun.db.sql_types.DateTime,
+        updated = Column(
+            DateTime,
             default=lambda: datetime.now(timezone.utc),
         )
-        function_id: Mapped[Optional[int]] = mapped_column(
+        function_id = Column(
             Integer,
             ForeignKey("functions.id", ondelete="SET NULL"),
             nullable=True,
         )
         function = relationship(Function)
 
-        model_id: Mapped[Optional[int]] = mapped_column(
+        model_id = Column(
             Integer,
             ForeignKey("artifacts_v2.id"),
             nullable=True,
@@ -1408,18 +990,10 @@ with warnings.catch_warnings():
         __tablename__ = "system_metadata"
         __table_args__ = (UniqueConstraint("key", name="_system_metadata_uc"),)
 
-        id: Mapped[int] = mapped_column(
-            Integer,
-            primary_key=True,
-        )
-        key: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText,
-            nullable=False,
-        )
+        id = Column(Integer, primary_key=True)
+        key = Column(Utf8BinText, nullable=False)
         # This column stores a string value, when extracting or manipulating it, ensure to handle it appropriately
-        value: Mapped[str] = mapped_column(
-            mlrun.db.sql_types.Utf8BinText, nullable=False
-        )
+        value = Column(Utf8BinText, nullable=False)
 
         def get_identifier_string(self) -> str:
             return f"{self.key}"

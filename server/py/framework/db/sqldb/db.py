@@ -1957,7 +1957,7 @@ class SQLDB(DBInterface):
             outer_query = self._paginate_query(outer_query, offset, limit=None)
 
         if not with_entities:
-            # egarly load the parent artifact
+            # early load the parent artifact
             outer_query = outer_query.options(selectinload(ArtifactV2.parent))
 
         results = outer_query.all()
@@ -3790,7 +3790,7 @@ class SQLDB(DBInterface):
             session.query(
                 Schedule.project.label("project_name"),
                 Schedule.name.label("schedule_name"),
-                case([(workflow_label_exists, True)], else_=False).label(
+                case((workflow_label_exists, True), else_=False).label(
                     "has_workflow_label"
                 ),
             )
@@ -3931,7 +3931,8 @@ class SQLDB(DBInterface):
                         AlertActivation.entity_kind
                         == mlrun.common.schemas.alert.EventEntityKind.MODEL_ENDPOINT_RESULT,
                         1,
-                    )
+                    ),
+                    else_=None,
                 )
             ).label("model_endpoint_alerts_count"),
             func.count(
@@ -3940,20 +3941,22 @@ class SQLDB(DBInterface):
                         AlertActivation.entity_kind
                         == mlrun.common.schemas.alert.EventEntityKind.JOB,
                         1,
-                    )
+                    ),
+                    else_=None,
                 )
             ).label("job_alerts_count"),
             func.count(
                 case(
                     (
-                        AlertActivation.entity_kind.not_in(
+                        AlertActivation.entity_kind.notin_(
                             [
                                 mlrun.common.schemas.alert.EventEntityKind.MODEL_ENDPOINT_RESULT,
                                 mlrun.common.schemas.alert.EventEntityKind.JOB,
                             ]
                         ),
                         1,
-                    )
+                    ),
+                    else_=None,
                 )
             ).label("other_alerts_count"),
         )

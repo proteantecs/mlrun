@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import pathlib
-import typing
 
 import alembic.command
 import alembic.config
@@ -52,21 +51,30 @@ class AlembicUtil:
             return True
         return current_revision == self._initial_revision
 
-    def _get_current_revision(self) -> typing.Optional[str]:
-        # create separate config in order to catch the stdout
-        catch_stdout_config = alembic.config.Config(self._alembic_config_path)
-        catch_stdout_config.print_stdout = self._save_output
-
+    def _get_current_revision(self) -> str:
+        # load Alembic config and capture stdout
+        catch_cfg = alembic.config.Config(self._alembic_config_path)
+        catch_cfg.print_stdout = self._save_output
         self._flush_output()
+
         try:
-            alembic.command.current(catch_stdout_config)
+            # try to read current DB revision
+            alembic.command.current(catch_cfg)
             return self._alembic_output.strip().replace(" (head)", "")
         except Exception as exc:
-            if "Can't locate revision identified by" in exc.args[0]:
-                # DB has a revision that isn't known to us, extracting it from the exception.
-                return exc.args[0].split("'")[2]
-
-            return None
+            msg = str(exc)
+            # if DB has no stamp or an unknown stamp, run all migrations
+            if (
+                "Can't locate revision identified by" in msg
+                or "no such revision" in msg.lower()
+            ):
+                alembic.command.upgrade(catch_cfg, "head")
+                # re-capture revision after upgrade
+                self._flush_output()
+                alembic.command.current(catch_cfg)
+                return self._alembic_output.strip().replace(" (head)", "")
+            # propagate other errors
+            raise ValueError("Failed to get current alembic revision") from exc
 
     def _get_revision_history_list(self) -> list[str]:
         """

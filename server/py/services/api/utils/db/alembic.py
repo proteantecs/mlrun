@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import pathlib
+import typing
 
 import alembic.command
 import alembic.config

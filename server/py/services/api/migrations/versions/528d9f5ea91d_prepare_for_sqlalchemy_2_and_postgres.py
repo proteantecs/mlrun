@@ -15,7 +15,7 @@
 """Add missing on cascade delete to tag, tag_v2, artifact_tag and notification tables
 
 Revision ID: 528d9f5ea91d
-Revises: 6925effc8fb1
+Revises: b31651280cce
 Create Date: 2025-05-22 19:11:42.445053
 """
 
@@ -24,7 +24,7 @@ from sqlalchemy.dialects import mysql
 
 # revision identifiers, used by Alembic.
 revision = "528d9f5ea91d"
-down_revision = "6925effc8fb1"
+down_revision = "b31651280cce"
 branch_labels = None
 depends_on = None
 

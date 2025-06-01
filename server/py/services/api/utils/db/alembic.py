@@ -51,30 +51,29 @@ class AlembicUtil:
             return True
         return current_revision == self._initial_revision
 
-    def _get_current_revision(self) -> str:
-        # load Alembic config and capture stdout
-        catch_cfg = alembic.config.Config(self._alembic_config_path)
-        catch_cfg.print_stdout = self._save_output
-        self._flush_output()
+    def _get_current_revision(self) -> typing.Optional[str]:
+        # create separate config in order to catch the stdout
+        catch_stdout_config = alembic.config.Config(self._alembic_config_path)
+        catch_stdout_config.print_stdout = self._save_output
+        logger.debug("Alembic output", revision=self._alembic_output)
 
+        self._flush_output()
         try:
-            # try to read current DB revision
-            alembic.command.current(catch_cfg)
+            alembic.command.current(catch_stdout_config)
+            logger.debug("Alembic current revision", revision=self._alembic_output)
             return self._alembic_output.strip().replace(" (head)", "")
         except Exception as exc:
-            msg = str(exc)
-            # if DB has no stamp or an unknown stamp, run all migrations
-            if (
-                "Can't locate revision identified by" in msg
-                or "no such revision" in msg.lower()
-            ):
-                alembic.command.upgrade(catch_cfg, "head")
-                # re-capture revision after upgrade
+            msg = exc.args[0]
+
+            if "Can't locate revision identified by" in msg or "no such revision" in msg.lower():
+                # run every migration from scratch up to head
+                alembic.command.upgrade(catch_stdout_config, "head")
+                # now capture and return the current (head) revision
                 self._flush_output()
-                alembic.command.current(catch_cfg)
+                alembic.command.current(catch_stdout_config)
                 return self._alembic_output.strip().replace(" (head)", "")
-            # propagate other errors
-            raise ValueError("Failed to get current alembic revision") from exc
+
+             raise ValueError("Failed to get current alembic revision") from exc
 
     def _get_revision_history_list(self) -> list[str]:
         """

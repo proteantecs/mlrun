@@ -23,7 +23,9 @@ from sys import executable
 import igz_mgmt
 import pandas as pd
 import pytest
-from kfp import dsl
+
+dsl = pytest.importorskip("kfp.dsl")
+
 
 import mlrun
 import mlrun.common.runtimes.constants

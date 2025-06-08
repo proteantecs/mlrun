@@ -69,7 +69,6 @@ RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
 COPY . .
 RUN chmod -R a+rX /mlrun/server/py/schemas/proto
 
-
 RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     uv pip install .[complete-api,kfp18] --python-version ${MLRUN_PYTHON_VERSION}

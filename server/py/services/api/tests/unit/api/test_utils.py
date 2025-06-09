@@ -1761,7 +1761,7 @@ async def test_update_functions_with_deletion_info(db: sqlalchemy.orm.Session):
             "x",
             "",
             "1.8.0",
-            "x",
+            "mlrun/mlrun-kfp",
         ),
         (
             "x",

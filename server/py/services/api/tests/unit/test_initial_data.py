@@ -21,8 +21,9 @@ import sqlalchemy.exc
 import sqlalchemy.orm
 
 import mlrun
+import mlrun.common.db.dialects
 import mlrun.common.schemas
-from mlrun.config import config
+import mlrun.config
 
 import framework.constants
 import framework.db.init_db
@@ -164,7 +165,7 @@ def test_resolve_current_data_version_version_exists():
 
 
 @pytest.mark.parametrize("table_exists", [True, False])
-@pytest.mark.parametrize("db_type", framework.db.sqldb.sql_session.Dialects.all())
+@pytest.mark.parametrize("db_type", mlrun.common.db.dialects.Dialects.all())
 def test_resolve_current_data_version_before_and_after_projects(table_exists, db_type):
     db, db_session = _initialize_db_without_migrations()
 
@@ -174,13 +175,13 @@ def test_resolve_current_data_version_before_and_after_projects(table_exists, db
     if not table_exists:
         # simulating table doesn't exist in DB
         db.get_current_data_version = unittest.mock.Mock()
-        if db_type == framework.db.sqldb.sql_session.Dialects.SQLITE:
+        if db_type == mlrun.common.db.dialects.Dialects.SQLITE:
             db.get_current_data_version.side_effect = sqlalchemy.exc.OperationalError(
                 "no such table", None, None
             )
         elif db_type in (
-            framework.db.sqldb.sql_session.Dialects.MYSQL,
-            framework.db.sqldb.sql_session.Dialects.POSTGRESQL,
+            mlrun.common.db.dialects.Dialects.MYSQL,
+            mlrun.common.db.dialects.Dialects.POSTGRESQL,
         ):
             db.get_current_data_version.side_effect = sqlalchemy.exc.ProgrammingError(
                 "Table 'mlrun.data_versions' doesn't exist", None, None
@@ -215,16 +216,16 @@ def test_add_default_hub_source_if_needed():
         db_session,
         index=mlrun.common.schemas.hub.last_source_index,
     )
-    assert hub_source.source.spec.path == config.hub.default_source.url
+    assert hub_source.source.spec.path == mlrun.config.config.hub.default_source.url
 
     # Change the config and make sure the hub source is updated
-    config.hub.default_source.url = "http://some-other-url"
+    mlrun.config.config.hub.default_source.url = "http://some-other-url"
     services.api.initial_data._add_default_hub_source_if_needed(db, db_session)
     hub_source = db.get_hub_source(
         db_session,
         index=mlrun.common.schemas.hub.last_source_index,
     )
-    assert hub_source.source.spec.path == config.hub.default_source.url
+    assert hub_source.source.spec.path == mlrun.config.config.hub.default_source.url
 
     # Make sure the hub source is not updated if it already exists
     with unittest.mock.patch(

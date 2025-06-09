@@ -38,11 +38,10 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Mapper, declared_attr, relationship
 
+import mlrun.common.db.dialects
 import mlrun.common.schemas
 import mlrun.db.sql_types
 import mlrun.utils.db
-
-import framework.db.sqldb.sql_session
 
 Base = declarative_base()
 NULL = None  # Avoid flake8 issuing warnings when comparing in filter
@@ -1013,7 +1012,7 @@ with warnings.catch_warnings():
 
 @event.listens_for(AlertActivation.__table__, "before_create")
 def _disable_autoinc_on_sqlite(table, connection, **kw):
-    if connection.dialect.name == framework.db.sqldb.sql_session.Dialects.SQLITE:
+    if connection.dialect.name.startswith(mlrun.common.db.dialects.Dialects.SQLITE):
         # disable SQLAlchemy's AUTOINCREMENT flag
         table.c.id.autoincrement = False
 
@@ -1023,7 +1022,7 @@ def _sqlite_autoincrement(
     mapper: Mapper, connection: Connection, target: AlertActivation
 ) -> None:
     if (
-        connection.dialect.name == framework.db.sqldb.sql_session.Dialects.SQLITE
+        connection.dialect.name.startswith(mlrun.common.db.dialects.Dialects.SQLITE)
         and target.id is None
     ):
         next_id: int = connection.execute(

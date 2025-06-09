@@ -60,7 +60,7 @@ import mlrun.k8s_utils
 import mlrun.model
 import mlrun.utils.db
 from mlrun.artifacts.base import fill_artifact_object_hash
-from mlrun.common.db.sql_session import Dialects
+from mlrun.common.db.dialects import Dialects
 from mlrun.common.schemas.feature_store import (
     FeatureSetDigestOutputV2,
     FeatureSetDigestSpecV2,

@@ -16,9 +16,7 @@ import abc
 import sqlalchemy
 import sqlalchemy.exc
 
-import mlrun
-
-import framework.db.sqldb.sql_session
+import mlrun.common.db.dialects
 
 
 class LockKiller(abc.ABC):
@@ -27,9 +25,9 @@ class LockKiller(abc.ABC):
     def __new__(cls, conn: sqlalchemy.Connection):
         if cls is LockKiller:
             name = conn.dialect.name
-            if name.startswith(framework.db.sqldb.sql_session.Dialects.MYSQL):
+            if name.startswith(mlrun.common.db.dialects.Dialects.MYSQL):
                 return super().__new__(MySQLLockKiller)
-            if name.startswith(framework.db.sqldb.sql_session.Dialects.POSTGRESQL):
+            if name.startswith(mlrun.common.db.dialects.Dialects.POSTGRESQL):
                 return super().__new__(PostgresLockKiller)
             raise NotImplementedError(f"No lock killer for dialect '{name}'")
         return super().__new__(cls)
@@ -68,7 +66,7 @@ class LockKiller(abc.ABC):
 
 
 class MySQLLockKiller(LockKiller):
-    dialect = framework.db.sqldb.sql_session.Dialects.MYSQL
+    dialect = mlrun.common.db.dialects.Dialects.MYSQL
 
     def query(self) -> str:
         return """
@@ -103,7 +101,7 @@ class MySQLLockKiller(LockKiller):
 
 
 class PostgresLockKiller(LockKiller):
-    dialect = framework.db.sqldb.sql_session.Dialects.POSTGRESQL
+    dialect = mlrun.common.db.dialects.Dialects.POSTGRESQL
 
     def query(self) -> str:
         return """

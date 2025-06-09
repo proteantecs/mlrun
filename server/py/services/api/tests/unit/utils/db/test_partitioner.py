@@ -125,7 +125,7 @@ def test_drop_old_partitions(
         mock_datetime.now.return_value = test_date
         mocked_db_drop_partitions.return_value = None
 
-        services.api.utils.db.partitioner.MySQLPartitioner().drop_partitions(
+        services.api.utils.db.partitioner.DBPartitioner().drop_partitions(
             db,
             "alert_activations",
             retention_days,
@@ -192,7 +192,7 @@ def test_create_partitions(
         ) as mocked_db_create_partitions,
     ):
         mock_datetime.now.return_value = test_date
-        services.api.utils.db.partitioner.MySQLPartitioner().create_partitions(
+        services.api.utils.db.partitioner.DBPartitioner().create_partitions(
             db,
             "alert_activations",
             partition_number,
@@ -230,7 +230,7 @@ def test_get_interval(
             mocked_partition_expression
         )
         partition_interval = (
-            services.api.utils.db.partitioner.MySQLPartitioner().get_partition_interval(
+            services.api.utils.db.partitioner.DBPartitioner().get_partition_interval(
                 db,
                 "alert_activations",
             )

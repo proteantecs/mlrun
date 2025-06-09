@@ -23,7 +23,7 @@ import framework.db.sqldb.db
 import framework.utils.singletons.db
 
 
-class MySQLPartitioner:
+class DBPartitioner:
     def create_and_drop_partitions(
         self,
         session: Session,

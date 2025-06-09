@@ -164,7 +164,7 @@ def test_resolve_current_data_version_version_exists():
 
 
 @pytest.mark.parametrize("table_exists", [True, False])
-@pytest.mark.parametrize("db_type", ["mysql", "sqlite"])
+@pytest.mark.parametrize("db_type", mlrun.common.db.sql_session.Dialects.all())
 def test_resolve_current_data_version_before_and_after_projects(table_exists, db_type):
     db, db_session = _initialize_db_without_migrations()
 
@@ -174,11 +174,14 @@ def test_resolve_current_data_version_before_and_after_projects(table_exists, db
     if not table_exists:
         # simulating table doesn't exist in DB
         db.get_current_data_version = unittest.mock.Mock()
-        if db_type == "sqlite":
+        if db_type == mlrun.common.db.sql_session.Dialects.SQLITE:
             db.get_current_data_version.side_effect = sqlalchemy.exc.OperationalError(
                 "no such table", None, None
             )
-        elif db_type == "mysql":
+        elif db_type in (
+            mlrun.common.db.sql_session.Dialects.MYSQL,
+            mlrun.common.db.sql_session.Dialects.POSTGRESQL,
+        ):
             db.get_current_data_version.side_effect = sqlalchemy.exc.ProgrammingError(
                 "Table 'mlrun.data_versions' doesn't exist", None, None
             )

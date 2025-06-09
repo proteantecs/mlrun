@@ -32,7 +32,7 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.engine.interfaces import Dialect
 from sqlalchemy.types import TypeDecorator
 
-from mlrun.common.db.sql_session import Dialects
+from framework.db.sqldb.sql_session import Dialects
 
 
 class DateTime(TypeDecorator):

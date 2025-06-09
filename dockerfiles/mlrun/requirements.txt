@@ -8,8 +8,6 @@ mpi4py~=3.1
 pymysql~=1.1
 # consumed when training a model using PyTorch
 tqdm~=4.66
-sqlalchemy~=2.0
-sqlalchemy-utils~=0.41.2
 # dask related packages:
 dask-kubernetes~=0.11.0
 # dask 2023 does not work on python 3.11

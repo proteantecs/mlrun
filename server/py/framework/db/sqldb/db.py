@@ -40,11 +40,13 @@ from sqlalchemy import (
     or_,
     select,
     text,
+    types,
 )
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.inspection import inspect as sqlalchemy_inspect
 from sqlalchemy.orm import Query, Session, aliased, load_only, selectinload
 from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.sql.compiler import IdentifierPreparer
 
 import mlrun
 import mlrun.common.constants as mlrun_constants
@@ -8413,6 +8415,10 @@ class MySQLDB(SQLDB):
             - partition_name: The name for the partition.
             - partition_value: the "LESS THAN" boundary value for the partition.
         """
+        engine = session.get_bind()
+        preparer = IdentifierPreparer(engine.dialect)
+        safe_table = preparer.quote(table_name)
+
         query = text("""
             SELECT PARTITION_DESCRIPTION
             FROM INFORMATION_SCHEMA.PARTITIONS
@@ -8426,13 +8432,16 @@ class MySQLDB(SQLDB):
             if row["PARTITION_DESCRIPTION"] is not None
         }
 
+        # prepare integer literal processor
+        int_processor = types.Integer().literal_processor(engine.dialect)
+
         new_defs = []
         for partition_name, partition_value in partitioning_information_list:
             if str(partition_value) in existing:
                 continue
-            new_defs.append(
-                f"PARTITION `{partition_name}` VALUES LESS THAN ({partition_value})"
-            )
+            literal = int_processor(int(partition_value))
+            safe_partition = preparer.quote(partition_name)
+            new_defs.append(f"PARTITION {safe_partition} VALUES LESS THAN ({literal})")
         if not new_defs:
             return
 
@@ -8442,7 +8451,7 @@ class MySQLDB(SQLDB):
             new_defs,
         )
         alter_sql = f"""
-            ALTER TABLE `{table_name}`
+            ALTER TABLE {safe_table}
             ADD PARTITION (
                 {', '.join(new_defs)}
             );
@@ -8462,6 +8471,10 @@ class MySQLDB(SQLDB):
         :param table_name: The name of the table with partitions.
         :param cutoff_partition_name: The cutoff partition name for dropping old partitions.
         """
+        engine = session.get_bind()
+        preparer = IdentifierPreparer(engine.dialect)
+        safe_table = preparer.quote(table_name)
+
         rows = session.execute(
             text("""
                 SELECT PARTITION_NAME
@@ -8475,13 +8488,13 @@ class MySQLDB(SQLDB):
         if not names:
             return
 
-        parts = ", ".join(f"`{n}`" for n in names)
+        parts = ", ".join(preparer.quote(n) for n in names)
         logger.debug(
             "Dropping partitions for table %s: %s",
             table_name,
             parts,
         )
-        session.execute(text(f"ALTER TABLE `{table_name}` DROP PARTITION {parts}"))
+        session.execute(text(f"ALTER TABLE {safe_table} DROP PARTITION {parts}"))
 
     @staticmethod
     def get_partition_expression_for_table(
@@ -8541,6 +8554,10 @@ class PostgreSQLDB(SQLDB):
             - partition_name: The name for the partition.
             - partition_value: a string "lower,upper" defining the range.
         """
+        engine = session.get_bind()
+        preparer = IdentifierPreparer(engine.dialect)
+        safe_table = preparer.quote(table_name)
+
         query = text("""
             SELECT inhrelid::regclass::text AS partition_name
             FROM pg_inherits
@@ -8562,16 +8579,25 @@ class PostgreSQLDB(SQLDB):
             table_name,
             new_parts,
         )
+
+        # prepare integer literal processor
+        int_processor = types.Integer().literal_processor(engine.dialect)
+
         for partition_name, range_spec in new_parts:
             lower, upper = [b.strip() for b in range_spec.split(",", 1)]
             if not (lower and upper):
                 raise ValueError(
                     f"Partition '{partition_name}' needs bounds as 'lower,upper', got '{range_spec}'"
                 )
+
+            lower_lit = int_processor(int(lower))
+            upper_lit = int_processor(int(upper))
+
+            safe_partition = preparer.quote(partition_name)
             ddl = text(f"""
-                ALTER TABLE "{table_name}"
-                ATTACH PARTITION "{partition_name}"
-                FOR VALUES FROM ({lower}) TO ({upper});
+                ALTER TABLE {safe_table}
+                ATTACH PARTITION {safe_partition}
+                FOR VALUES FROM ({lower_lit}) TO ({upper_lit});
             """)
             session.execute(ddl)
 
@@ -8588,6 +8614,10 @@ class PostgreSQLDB(SQLDB):
         :param table_name: The name of the table with partitions.
         :param cutoff_partition_name: The cutoff partition name for dropping old partitions.
         """
+        engine = session.get_bind()
+        preparer = IdentifierPreparer(engine.dialect)
+        safe_table = preparer.quote(table_name)
+
         rows = session.execute(
             text("""
                 SELECT c.relname AS partition_name
@@ -8601,17 +8631,19 @@ class PostgreSQLDB(SQLDB):
             """),
             {"table_name": table_name, "cutoff": cutoff_partition_name},
         ).fetchall()
+
         names = [r[0] for r in rows]
         if not names:
             return
 
         for part in names:
+            safe_part = preparer.quote(part)
             logger.debug("Detaching partition %s from %s", part, table_name)
             session.execute(
-                text(f'ALTER TABLE "{table_name}" DETACH PARTITION "{part}"')
+                text(f"ALTER TABLE {safe_table} DETACH PARTITION {safe_part}")
             )
             logger.debug("Dropping orphaned table %s", part)
-            session.execute(text(f'DROP TABLE IF EXISTS "{part}"'))
+            session.execute(text(f"DROP TABLE IF EXISTS {safe_part}"))
 
     @staticmethod
     def get_partition_expression_for_table(

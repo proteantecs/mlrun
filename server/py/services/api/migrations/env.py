@@ -217,7 +217,7 @@ def get_lock_killer(connection: Connection) -> BaseLockKiller:
         return MySQLLockKiller(connection)
     if name.startswith(Dialects.POSTGRESQL):
         return PostgresLockKiller(connection)
-    raise ValueError(f"No lock-killer for dialect '{name}'")
+    raise NotImplementedError(f"No lock-killer for dialect '{name}'")
 
 
 def run_migrations_offline():
@@ -265,11 +265,14 @@ def run_migrations_online():
         )
 
     with connectable.connect() as connection:
-        killer = get_lock_killer(connection)
         try:
+            killer = get_lock_killer(connection)
+        except NotImplementedError:
+            mlrun.utils.logger.info(
+                "No lock logic for dialect", dialect=connection.dialect.name
+            )
+        else:
             killer.kill_locks()
-        except ValueError:
-            mlrun.utils.logger.info(f"No lock logic for {connection.dialect.name!r}")
 
         alembic.context.configure(
             connection=connection,

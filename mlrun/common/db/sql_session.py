@@ -56,7 +56,7 @@ def _init_engine(dsn=None):
     global _engines
     dsn = dsn or config.httpdb.dsn
     kwargs = {}
-    if Dialects.MYSQL in dsn:
+    if dsn != Dialects.SQLITE:
         pool_size = config.httpdb.db.connections_pool_size
         if pool_size is None:
             pool_size = config.httpdb.max_workers

@@ -8600,7 +8600,8 @@ class PostgreSQLDB(SQLDB):
 
             if not (lower_str and upper_str):
                 raise ValueError(
-                    f"Partition '{partition_name}' needs bounds as 'lower,upper' or a non-empty upper bound, got '{range_spec}'"
+                    f"Partition '{partition_name}' needs bounds as 'lower,upper' or a non-empty upper bound,"
+                    f" got '{range_spec}'"
                 )
 
             lower_lit = int_processor(int(lower_str))

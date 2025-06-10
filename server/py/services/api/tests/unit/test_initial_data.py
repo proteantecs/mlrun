@@ -716,9 +716,9 @@ def _initialize_db_without_migrations() -> (
 ):
     dsn = "sqlite:///:memory:?check_same_thread=false"
     mlrun.mlconf.httpdb.dsn = dsn
-    mlrun.common.db.sql_session._init_engine(dsn=dsn)
+    framework.db.sqldb.sql_session._init_engine(dsn=dsn)
     framework.utils.singletons.db.initialize_db()
-    db_session = mlrun.common.db.sql_session.create_session(dsn=dsn)
+    db_session = framework.db.sqldb.sql_session.create_session(dsn=dsn)
     db = framework.db.sqldb.db.SQLDB(dsn)
     db.initialize(db_session)
     framework.db.init_db.init_db()

@@ -25,6 +25,7 @@ import framework.tests.unit.common_fixtures
 import framework.utils.singletons.db
 import framework.utils.singletons.project_member
 import services.api.initial_data
+from framework.db.sqldb.sql_session import _init_engine
 
 
 class TestDatabaseBase(framework.tests.unit.common_fixtures.TestServiceBase):
@@ -42,7 +43,7 @@ class TestDatabaseBase(framework.tests.unit.common_fixtures.TestServiceBase):
         db_file = NamedTemporaryFile(suffix="-mlrun.db")
         dsn = f"sqlite:///{db_file.name}?check_same_thread=false"
         mlrun.config.config.httpdb.dsn = dsn
-        mlrun.common.db.sql_session._init_engine()
+        _init_engine()
 
         # SQLite foreign keys constraint must be enabled manually to allow cascade deletions on DB level
         @event.listens_for(Engine, "connect")

@@ -17,7 +17,6 @@ import pytest
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
 
-import mlrun.common.db.sql_session
 import mlrun.config
 
 import framework.db.session

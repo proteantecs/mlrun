@@ -6900,7 +6900,7 @@ class SQLDB(DBInterface):
         raise NotImplementedError()
 
     @staticmethod
-    def table_exist(
+    def table_exists(
         session: Session,
         table_name: str,
     ) -> bool:
@@ -8419,29 +8419,21 @@ class MySQLDB(SQLDB):
         preparer = IdentifierPreparer(engine.dialect)
         safe_table = preparer.quote(table_name)
 
-        query = text("""
-            SELECT PARTITION_DESCRIPTION
-            FROM INFORMATION_SCHEMA.PARTITIONS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME   = :table_name
-        """)
-        rows = session.execute(query, {"table_name": table_name}).mappings().all()
-        existing = {
-            row["PARTITION_DESCRIPTION"]
-            for row in rows
-            if row["PARTITION_DESCRIPTION"] is not None
-        }
+        # fetch the names of already-existing partitions
+        existing = MySQLDB._get_existing_partitions(session, table_name)
 
         # prepare integer literal processor
         int_processor = types.Integer().literal_processor(engine.dialect)
 
-        new_defs = []
+        # build new PARTITION clauses
+        new_defs: list[str] = []
         for partition_name, partition_value in partitioning_information_list:
-            if str(partition_value) in existing:
+            if partition_name in existing:
                 continue
             literal = int_processor(int(partition_value))
-            safe_partition = preparer.quote(partition_name)
+            safe_partition = f"`{partition_name}`"
             new_defs.append(f"PARTITION {safe_partition} VALUES LESS THAN ({literal})")
+
         if not new_defs:
             return
 
@@ -8450,12 +8442,7 @@ class MySQLDB(SQLDB):
             table_name,
             new_defs,
         )
-        alter_sql = f"""
-            ALTER TABLE {safe_table}
-            ADD PARTITION (
-                {', '.join(new_defs)}
-            );
-        """
+        alter_sql = f"ALTER TABLE {safe_table} ADD PARTITION ({', '.join(new_defs)})"
         session.execute(text(alter_sql))
 
     @staticmethod
@@ -8482,13 +8469,16 @@ class MySQLDB(SQLDB):
                 WHERE TABLE_NAME = :table_name
                   AND PARTITION_NAME < :cutoff
             """),
-            {"table_name": table_name, "cutoff": cutoff_partition_name},
+            {
+                "table_name": table_name,
+                "cutoff": cutoff_partition_name,
+            },
         ).fetchall()
-        names = [r[0] for r in rows]
+        names = [row[0] for row in rows]
         if not names:
             return
 
-        parts = ", ".join(preparer.quote(n) for n in names)
+        parts = ", ".join(f"`{name}`" for name in names)
         logger.debug(
             "Dropping partitions for table %s: %s",
             table_name,
@@ -8517,7 +8507,7 @@ class MySQLDB(SQLDB):
         ).scalar()
 
     @staticmethod
-    def table_exist(
+    def table_exists(
         session: Session,
         table_name: str,
     ) -> bool:
@@ -8533,9 +8523,31 @@ class MySQLDB(SQLDB):
                 FROM information_schema.tables
                 WHERE TABLE_NAME = :table_name
             """),
-            {"table_name": table_name},
+            {
+                "table_name": table_name,
+            },
         ).scalar()
         return result > 0
+
+    @staticmethod
+    def _get_existing_partitions(
+        session: Session,
+        table_name: str,
+    ) -> set[str]:
+        """
+        Returns set of partition names already attached to `table_name`.
+        """
+        result = session.execute(
+            text("""
+                SELECT PARTITION_NAME
+                FROM INFORMATION_SCHEMA.PARTITIONS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME   = :table_name
+                  AND PARTITION_NAME IS NOT NULL
+            """),
+            {"table_name": table_name},
+        )
+        return set(result.scalars().all())
 
 
 class PostgreSQLDB(SQLDB):
@@ -8552,20 +8564,16 @@ class PostgreSQLDB(SQLDB):
         :param table_name: Name of the table where partitions will be created.
         :param partitioning_information_list: List of tuples, each containing:
             - partition_name: The name for the partition.
-            - partition_value: a string "lower,upper" defining the range.
+            - partition_value: a string "lower,upper" defining the range, or a single upper bound.
         """
         engine = session.get_bind()
         preparer = IdentifierPreparer(engine.dialect)
         safe_table = preparer.quote(table_name)
 
-        query = text("""
-            SELECT inhrelid::regclass::text AS partition_name
-            FROM pg_inherits
-            WHERE inhparent = :table_name::regclass
-        """)
-        rows = session.execute(query, {"table_name": table_name}).mappings().all()
-        existing = {row["partition_name"] for row in rows}
+        # find existing attached partitions
+        existing = PostgreSQLDB._get_existing_partitions(session, table_name)
 
+        # filter out ones that already exist
         new_parts = [
             (name, spec)
             for name, spec in partitioning_information_list
@@ -8584,22 +8592,28 @@ class PostgreSQLDB(SQLDB):
         int_processor = types.Integer().literal_processor(engine.dialect)
 
         for partition_name, range_spec in new_parts:
-            lower, upper = [b.strip() for b in range_spec.split(",", 1)]
-            if not (lower and upper):
+            # handle "lower,upper" or single-value (upper only)
+            if "," in range_spec:
+                lower_str, upper_str = [b.strip() for b in range_spec.split(",", 1)]
+            else:
+                lower_str, upper_str = partition_name, range_spec
+
+            if not (lower_str and upper_str):
                 raise ValueError(
-                    f"Partition '{partition_name}' needs bounds as 'lower,upper', got '{range_spec}'"
+                    f"Partition '{partition_name}' needs bounds as 'lower,upper' or a non-empty upper bound, got '{range_spec}'"
                 )
 
-            lower_lit = int_processor(int(lower))
-            upper_lit = int_processor(int(upper))
+            lower_lit = int_processor(int(lower_str))
+            upper_lit = int_processor(int(upper_str))
 
             safe_partition = preparer.quote(partition_name)
             ddl = text(f"""
-                ALTER TABLE {safe_table}
-                ATTACH PARTITION {safe_partition}
-                FOR VALUES FROM ({lower_lit}) TO ({upper_lit});
+                CREATE TABLE {safe_partition}
+                PARTITION OF {safe_table}
+                FOR VALUES FROM ({lower_lit}) TO ({upper_lit})
             """)
             session.execute(ddl)
+            session.commit()
 
     @staticmethod
     def drop_partitions(
@@ -8618,6 +8632,7 @@ class PostgreSQLDB(SQLDB):
         preparer = IdentifierPreparer(engine.dialect)
         safe_table = preparer.quote(table_name)
 
+        # fetch partition names older than cutoff
         rows = session.execute(
             text("""
                 SELECT c.relname AS partition_name
@@ -8632,18 +8647,23 @@ class PostgreSQLDB(SQLDB):
             {"table_name": table_name, "cutoff": cutoff_partition_name},
         ).fetchall()
 
-        names = [r[0] for r in rows]
+        # dedupe partition names (in case of duplicates) and maintain order
+        names = list(dict.fromkeys([r[0] for r in rows]))
         if not names:
             return
 
         for part in names:
             safe_part = preparer.quote(part)
-            logger.debug("Detaching partition %s from %s", part, table_name)
+            logger.debug(
+                "Detaching and dropping partition %s from %s", part, table_name
+            )
+            # detach partition
             session.execute(
                 text(f"ALTER TABLE {safe_table} DETACH PARTITION {safe_part}")
             )
-            logger.debug("Dropping orphaned table %s", part)
+            # drop orphaned partition table
             session.execute(text(f"DROP TABLE IF EXISTS {safe_part}"))
+        session.commit()
 
     @staticmethod
     def get_partition_expression_for_table(
@@ -8669,7 +8689,7 @@ class PostgreSQLDB(SQLDB):
         ).scalar()
 
     @staticmethod
-    def table_exist(
+    def table_exists(
         session: Session,
         table_name: str,
     ) -> bool:
@@ -8692,3 +8712,22 @@ class PostgreSQLDB(SQLDB):
                 {"table_name": table_name},
             ).scalar()
         )
+
+    @staticmethod
+    def _get_existing_partitions(
+        session: Session,
+        table_name: str,
+    ):
+        """
+        Returns set of partition names already attached to `table_name`.
+        """
+        result = session.execute(
+            text("""
+                SELECT inhrelid::regclass::text AS partition_name
+                FROM pg_inherits
+                WHERE inhparent = (:table_name)::regclass
+            """),
+            {"table_name": table_name},
+        )
+
+        return set(result.scalars().all())

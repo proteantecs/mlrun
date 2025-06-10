@@ -1015,7 +1015,7 @@ class DBInterface(ABC):
         pass
 
     @staticmethod
-    def table_exist(
+    def table_exists(
         session,
         table_name: str,
     ) -> bool:

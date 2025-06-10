@@ -26,8 +26,8 @@ import framework.db.sqldb.db
 
 @pytest.mark.usefixtures("pmr_mysql_container")
 def test_create_partitions_mysql(alembic_engine):
-    Session = sessionmaker(bind=alembic_engine)
-    session = Session()
+    session_maker = sessionmaker(bind=alembic_engine)
+    session = session_maker()
     table = "dyn_table"
 
     # 1) create a RANGE-partitioned table with a dummy initial partition
@@ -71,8 +71,8 @@ def test_create_partitions_mysql(alembic_engine):
 
 @pytest.mark.usefixtures("pmr_mysql_container")
 def test_drop_partitions_mysql(alembic_engine):
-    Session = sessionmaker(bind=alembic_engine)
-    session = Session()
+    session_maker = sessionmaker(bind=alembic_engine)
+    session = session_maker()
     table = "dyn_table_drop"
 
     # 1) create table with dummy initial partition

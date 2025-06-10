@@ -24,8 +24,8 @@ import framework.db.sqldb.db
 
 @pytest.mark.usefixtures("pmr_postgres_container")
 def test_create_partitions_via_interval(alembic_engine):
-    Session = sessionmaker(bind=alembic_engine)
-    session = Session()
+    session_maker = sessionmaker(bind=alembic_engine)
+    session = session_maker()
     table = "dyn_table"
     # 1) create a RANGE-partitioned table
     session.execute(
@@ -66,8 +66,8 @@ def test_create_partitions_via_interval(alembic_engine):
 
 @pytest.mark.usefixtures("pmr_postgres_container")
 def test_drop_partitions_via_interval(alembic_engine):
-    Session = sessionmaker(bind=alembic_engine)
-    session = Session()
+    session_maker = sessionmaker(bind=alembic_engine)
+    session = session_maker()
     table = "dyn_table_drop"
     # setup: table + three weekly partitions
     session.execute(

@@ -314,12 +314,15 @@ def _compile_function_config(
             # if base_spec was not set (when not using code_to_function) and we have base64 code
             # we create the base spec with essential attributes
             config = nuclio.config.new_config()
-            mlrun.utils.update_in(config, "spec.handler", handler or "main:handler")
 
+        _set_function_metadata(function, config)
+
+        if not mlrun.utils.get_in(config, "spec.handler"):
+            # if handler was not set, we set it to the default value
+            mlrun.utils.update_in(config, "spec.handler", handler or "main:handler")
         config = nuclio.config.extend_config(
             config, nuclio_spec, tag, function.spec.build.code_origin
         )
-
         if (
             function.kind == mlrun.runtimes.RuntimeKinds.serving
             and not mlrun.utils.get_in(config, "spec.build.functionSourceCode")
@@ -338,6 +341,7 @@ def _compile_function_config(
             kind=function.spec.function_kind,
             verbose=function.verbose,
         )
+        _set_function_metadata(function, config)
 
     mlrun.utils.update_in(
         config,
@@ -345,7 +349,6 @@ def _compile_function_config(
         function.spec.generate_nuclio_volumes(),
         append=True,
     )
-    _set_function_metadata(function, config)
     _resolve_and_set_base_image(function, config, client_version, client_python_version)
     _resolve_and_set_nuclio_runtime(
         function, config, client_version, client_python_version
@@ -361,6 +364,14 @@ def _set_function_metadata(function, config):
     labels = function.metadata.labels or {}
     labels.update({mlrun_constants.MLRunInternalLabels.mlrun_class: function.kind})
     annotations = function.metadata.annotations or {}
+
+    # make sure that labels and annotations exists in dictionary
+    for key in [
+        "metadata.labels",
+        "metadata.annotations",
+    ]:
+        if not mlrun.utils.get_in(config, key):
+            mlrun.utils.update_in(config, key, {})
 
     _apply_escaped_config(config, "metadata.labels", labels)
     _apply_escaped_config(config, "metadata.annotations", annotations)

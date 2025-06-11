@@ -8407,43 +8407,61 @@ class MySQLDB(SQLDB):
         partitioning_information_list: list[tuple[str, str]],
     ):
         """
-        Creates partitions in the specified database table.
+        Add RANGE partitions to a MySQL table.
 
-        :param session: SQLAlchemy session for database connection.
-        :param table_name: Name of the table where partitions will be created.
-        :param partitioning_information_list: List of tuples, each containing:
-            - partition_name: The name for the partition.
-            - partition_value: the "LESS THAN" boundary value for the partition.
+        * Duplicate name with different bound → ValueError.
+        * Duplicate name with same bound     → ignored.
+        * New upper bounds must be strictly greater than every existing bound.
         """
         engine = session.get_bind()
         preparer = IdentifierPreparer(engine.dialect)
-        safe_table = preparer.quote(table_name)
+        quoted_table = preparer.quote(table_name)
 
-        # fetch the names of already-existing partitions
-        existing = MySQLDB._get_existing_partitions(session, table_name)
+        # existing_partitions = {partition_name: upper_bound_int}
+        existing_partitions = MySQLDB._get_partition_metadata(session, table_name)
+        highest_existing_bound = max(existing_partitions.values(), default=-1)
+        literal_int = types.Integer().literal_processor(engine.dialect)
 
-        # prepare integer literal processor
-        int_processor = types.Integer().literal_processor(engine.dialect)
+        sql_fragments: list[tuple[int, str]] = []  # (upper_bound_int, "…SQL…")
 
-        # build new PARTITION clauses
-        new_defs: list[str] = []
-        for partition_name, partition_value in partitioning_information_list:
-            if partition_name in existing:
-                continue
-            literal = int_processor(int(partition_value))
-            safe_partition = f"`{partition_name}`"
-            new_defs.append(f"PARTITION {safe_partition} VALUES LESS THAN ({literal})")
+        for partition_name, upper_bound_text in partitioning_information_list:
+            upper_bound_int = int(upper_bound_text)
 
-        if not new_defs:
+            # — duplicate-name checks -------------------------------------------------
+            if partition_name in existing_partitions:
+                if existing_partitions[partition_name] != upper_bound_int:
+                    raise ValueError(
+                        f"Partition {partition_name} already exists with a different "
+                        f"bound: {existing_partitions[partition_name]} vs {upper_bound_int}"
+                    )
+                continue  # same bound → nothing to add
+
+            # — ascending-order rule --------------------------------------------------
+            if upper_bound_int <= highest_existing_bound:
+                continue  # not strictly higher → skip
+
+            sql_fragment = (
+                f"PARTITION `{partition_name}` "
+                f"VALUES LESS THAN ({literal_int(upper_bound_int)})"
+            )
+            sql_fragments.append((upper_bound_int, sql_fragment))
+            highest_existing_bound = upper_bound_int  # advance cursor
+
+        if not sql_fragments:
             return
 
+        # apply in ascending bound order
+        sql_fragments.sort(key=lambda pair: pair[0])
+        alter_clause = ", ".join(fragment for _, fragment in sql_fragments)
+
         logger.info(
-            "Creating new partitions for table %s: %s",
-            table_name,
-            new_defs,
+            "Creating new MySQL partitions",
+            table_name=table_name,
+            partitions_sql=alter_clause,
         )
-        alter_sql = f"ALTER TABLE {safe_table} ADD PARTITION ({', '.join(new_defs)})"
-        session.execute(text(alter_sql))
+        session.execute(
+            text(f"ALTER TABLE {quoted_table} ADD PARTITION ({alter_clause})")
+        )
 
     @staticmethod
     def drop_partitions(
@@ -8462,27 +8480,19 @@ class MySQLDB(SQLDB):
         preparer = IdentifierPreparer(engine.dialect)
         safe_table = preparer.quote(table_name)
 
-        rows = session.execute(
-            text("""
-                SELECT PARTITION_NAME
-                FROM INFORMATION_SCHEMA.PARTITIONS
-                WHERE TABLE_NAME = :table_name
-                  AND PARTITION_NAME < :cutoff
-            """),
-            {
-                "table_name": table_name,
-                "cutoff": cutoff_partition_name,
-            },
-        ).fetchall()
-        names = [row[0] for row in rows]
+        names = MySQLDB._get_partitions_older_than(
+            session=session,
+            table_name=table_name,
+            cutoff_partition_name=cutoff_partition_name,
+        )
         if not names:
             return
 
         parts = ", ".join(f"`{name}`" for name in names)
         logger.debug(
-            "Dropping partitions for table %s: %s",
-            table_name,
-            parts,
+            "Dropping partitions for table",
+            table_name=table_name,
+            parts=parts,
         )
         session.execute(text(f"ALTER TABLE {safe_table} DROP PARTITION {parts}"))
 
@@ -8530,24 +8540,59 @@ class MySQLDB(SQLDB):
         return result > 0
 
     @staticmethod
-    def _get_existing_partitions(
+    def _get_partitions_older_than(
         session: Session,
         table_name: str,
-    ) -> set[str]:
+        cutoff_partition_name: str,
+    ) -> list[str]:
         """
-        Returns set of partition names already attached to `table_name`.
+        Return names of MySQL partitions whose name is lexicographically
+        less than *cutoff_partition_name*.
         """
-        result = session.execute(
-            text("""
+        rows = session.execute(
+            text(
+                """
                 SELECT PARTITION_NAME
                 FROM INFORMATION_SCHEMA.PARTITIONS
                 WHERE TABLE_SCHEMA = DATABASE()
-                  AND TABLE_NAME   = :table_name
+                  AND TABLE_NAME = :table_name
+                  AND PARTITION_NAME < :cutoff
                   AND PARTITION_NAME IS NOT NULL
-            """),
+                """
+            ),
+            {"table_name": table_name, "cutoff": cutoff_partition_name},
+        ).fetchall()
+
+        return [row[0] for row in rows]
+
+    @staticmethod
+    def _get_partition_metadata(
+        session: Session,
+        table_name: str,
+    ) -> dict[str, int]:
+        """
+        Return a dict {partition_name: upper_bound_int}, skipping NULL bounds.
+
+        Mirrors:
+        SELECT PARTITION_NAME, PARTITION_DESCRIPTION
+        FROM   INFORMATION_SCHEMA.PARTITIONS
+        WHERE  TABLE_SCHEMA = DATABASE() AND TABLE_NAME = <table_name>
+          AND  PARTITION_NAME IS NOT NULL
+        """
+        rows = session.execute(
+            text(
+                """
+                SELECT PARTITION_NAME, PARTITION_DESCRIPTION
+                FROM INFORMATION_SCHEMA.PARTITIONS
+                WHERE TABLE_SCHEMA = DATABASE()
+                  AND TABLE_NAME = :table_name
+                  AND PARTITION_NAME IS NOT NULL
+                """
+            ),
             {"table_name": table_name},
-        )
-        return set(result.scalars().all())
+        ).fetchall()
+
+        return {name: int(bound) for name, bound in rows if bound is not None}
 
 
 class PostgreSQLDB(SQLDB):
@@ -8558,63 +8603,64 @@ class PostgreSQLDB(SQLDB):
         partitioning_information_list: list[tuple[str, str]],
     ):
         """
-        Creates partitions in the specified database table.
+        Add RANGE partitions to a PostgreSQL table (single-column integer key).
 
-        :param session: SQLAlchemy session for database connection.
-        :param table_name: Name of the table where partitions will be created.
-        :param partitioning_information_list: List of tuples, each containing:
-            - partition_name: The name for the partition.
-            - partition_value: a string "lower,upper" defining the range, or a single upper bound.
+        * Duplicate name with different bound → ValueError.
+        * Duplicate name with same bound     → ignored.
+        * New upper bounds must be strictly greater than every existing bound.
+        * The lower bound of each new partition is taken to be the current
+          highest existing upper bound (i.e. partitions are assumed contiguous).
         """
         engine = session.get_bind()
         preparer = IdentifierPreparer(engine.dialect)
-        safe_table = preparer.quote(table_name)
+        quoted_table = preparer.quote(table_name)
 
-        # find existing attached partitions
-        existing = PostgreSQLDB._get_existing_partitions(session, table_name)
+        existing_partitions = PostgreSQLDB._get_partition_metadata(session, table_name)
+        highest_existing_bound = max(existing_partitions.values(), default=-1)
+        literal_int = types.Integer().literal_processor(engine.dialect)
 
-        # filter out ones that already exist
-        new_parts = [
-            (name, spec)
-            for name, spec in partitioning_information_list
-            if name not in existing
-        ]
-        if not new_parts:
+        ddl_fragments = []  # (upper_bound_int, DDL)
+
+        for partition_name, upper_bound_text in partitioning_information_list:
+            upper_bound_int = int(upper_bound_text)
+
+            # ---- duplicate-name handling ----------------------------------------
+            if partition_name in existing_partitions:
+                if existing_partitions[partition_name] != upper_bound_int:
+                    raise ValueError(
+                        f"Partition {partition_name} already exists with a different "
+                        f"bound: {existing_partitions[partition_name]} vs {upper_bound_int}"
+                    )
+                continue  # already present with same bound
+
+            # ---- ascending-order rule -------------------------------------------
+            if upper_bound_int <= highest_existing_bound:
+                continue  # not strictly higher → skip
+
+            # contiguous assumption: lower == current highest bound
+            lower_bound_int = highest_existing_bound
+            ddl_fragments.append(
+                (
+                    upper_bound_int,
+                    text(
+                        f"""
+                        CREATE TABLE {preparer.quote(partition_name)}
+                        PARTITION OF {quoted_table}
+                        FOR VALUES FROM ({literal_int(lower_bound_int)})
+                                   TO   ({literal_int(upper_bound_int)})
+                        """
+                    ),
+                )
+            )
+            highest_existing_bound = upper_bound_int  # advance cursor
+
+        if not ddl_fragments:
             return
 
-        logger.info(
-            "Creating new Postgres partitions for table %s: %s",
-            table_name,
-            new_parts,
-        )
-
-        # prepare integer literal processor
-        int_processor = types.Integer().literal_processor(engine.dialect)
-
-        for partition_name, range_spec in new_parts:
-            # handle "lower,upper" or single-value (upper only)
-            if "," in range_spec:
-                lower_str, upper_str = [b.strip() for b in range_spec.split(",", 1)]
-            else:
-                lower_str, upper_str = partition_name, range_spec
-
-            if not (lower_str and upper_str):
-                raise ValueError(
-                    f"Partition '{partition_name}' needs bounds as 'lower,upper' or a non-empty upper bound,"
-                    f" got '{range_spec}'"
-                )
-
-            lower_lit = int_processor(int(lower_str))
-            upper_lit = int_processor(int(upper_str))
-
-            safe_partition = preparer.quote(partition_name)
-            ddl = text(f"""
-                CREATE TABLE {safe_partition}
-                PARTITION OF {safe_table}
-                FOR VALUES FROM ({lower_lit}) TO ({upper_lit})
-            """)
+        ddl_fragments.sort(key=lambda pair: pair[0])  # ascending
+        for _upper, ddl in ddl_fragments:
             session.execute(ddl)
-            session.commit()
+        session.commit()
 
     @staticmethod
     def drop_partitions(
@@ -8629,41 +8675,26 @@ class PostgreSQLDB(SQLDB):
         :param table_name: The name of the table with partitions.
         :param cutoff_partition_name: The cutoff partition name for dropping old partitions.
         """
-        engine = session.get_bind()
-        preparer = IdentifierPreparer(engine.dialect)
-        safe_table = preparer.quote(table_name)
-
-        # fetch partition names older than cutoff
-        rows = session.execute(
-            text("""
-                SELECT c.relname AS partition_name
-                FROM pg_inherits AS inh
-                JOIN pg_class   AS c  ON inh.inhrelid   = c.oid
-                JOIN pg_class   AS p  ON inh.inhparent  = p.oid
-                JOIN pg_namespace AS n ON p.relnamespace = n.oid
-                WHERE n.nspname = current_schema()
-                  AND p.relname = :table_name
-                  AND c.relname < :cutoff
-            """),
-            {"table_name": table_name, "cutoff": cutoff_partition_name},
-        ).fetchall()
-
-        # dedupe partition names (in case of duplicates) and maintain order
-        names = list(dict.fromkeys([r[0] for r in rows]))
-        if not names:
+        to_drop = PostgreSQLDB._get_partitions_older_than(
+            session, table_name, cutoff_partition_name
+        )
+        if not to_drop:
             return
 
-        for part in names:
-            safe_part = preparer.quote(part)
-            logger.debug(
-                "Detaching and dropping partition %s from %s", part, table_name
-            )
-            # detach partition
-            session.execute(
-                text(f"ALTER TABLE {safe_table} DETACH PARTITION {safe_part}")
-            )
-            # drop orphaned partition table
-            session.execute(text(f"DROP TABLE IF EXISTS {safe_part}"))
+        engine = session.get_bind()
+        preparer = IdentifierPreparer(engine.dialect)
+        q_table = preparer.quote(table_name)
+
+        logger.info(
+            "Detaching and dropping partitions",
+            table_name=table_name,
+            parts=to_drop,
+        )
+        for part in sorted(to_drop):
+            q_part = preparer.quote(part)
+            session.execute(text(f"ALTER TABLE {q_table} DETACH PARTITION {q_part}"))
+            session.execute(text(f"DROP TABLE IF EXISTS {q_part}"))
+
         session.commit()
 
     @staticmethod
@@ -8686,7 +8717,9 @@ class PostgreSQLDB(SQLDB):
                 WHERE pn.nspname = current_schema()
                   AND pc.relname = :table_name
             """),
-            {"table_name": table_name},
+            {
+                "table_name": table_name,
+            },
         ).scalar()
 
     @staticmethod
@@ -8710,25 +8743,45 @@ class PostgreSQLDB(SQLDB):
                       AND table_name   = :table_name
                 )
             """),
-                {"table_name": table_name},
+                {
+                    "table_name": table_name,
+                },
             ).scalar()
         )
 
     @staticmethod
-    def _get_existing_partitions(
+    def _get_partitions_older_than(
         session: Session,
         table_name: str,
-    ):
+        cutoff_partition_name: str,
+    ) -> list[str]:
         """
-        Returns set of partition names already attached to `table_name`.
+        Returns names of PostgreSQL partitions for a table that are lexicographically less than the cutoff.
         """
-        result = session.execute(
-            text("""
-                SELECT inhrelid::regclass::text AS partition_name
-                FROM pg_inherits
-                WHERE inhparent = (:table_name)::regclass
-            """),
-            {"table_name": table_name},
-        )
+        existing = PostgreSQLDB._get_partition_metadata(session, table_name)
+        return [name for name in existing if name < cutoff_partition_name]
 
-        return set(result.scalars().all())
+    @staticmethod
+    def _get_partition_metadata(session: Session, table_name: str) -> dict[str, int]:
+        """
+        Return {partition_name: upper_bound_int} for RANGE partitions.
+        """
+        rows = session.execute(
+            text(
+                """
+                SELECT c.relname AS partition_name,
+                       (regexp_match(
+                               pg_get_expr(c.relpartbound, c.oid),
+                               'TO \\((\\d+)\\)'
+                        ))[1]::int                      AS upper_bound
+                FROM pg_inherits i
+                    JOIN pg_class c
+                ON c.oid = i.inhrelid
+                WHERE i.inhparent = CAST (:tbl AS regclass)
+                  AND c.relkind = 'r' -- ordinary leaf tables
+                """
+            ),
+            {"tbl": table_name},
+        ).fetchall()
+
+        return {name: bound for name, bound in rows}

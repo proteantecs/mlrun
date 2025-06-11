@@ -102,9 +102,9 @@ class DBPartitioner:
 
         # Drop partitions that are older than the cutoff
         framework.utils.singletons.db.get_db().drop_partitions(
-            session,
-            table_name,
-            f"p{cutoff_partition_name}",
+            session=session,
+            table_name=table_name,
+            cutoff_partition_name=f"p{cutoff_partition_name}",
         )
 
     @staticmethod

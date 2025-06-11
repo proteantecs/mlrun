@@ -18,6 +18,8 @@ import pytest_mock_resources
 
 import mlrun
 
+import framework.utils.singletons.db
+
 postgres = pytest_mock_resources.create_postgres_fixture()
 
 
@@ -26,6 +28,7 @@ def alembic_engine(postgres):
     os.environ["MLRUN_HTTPDB__DSN"] = str(postgres.engine.url)
     mlrun.mlconf.reload()
     engine = postgres.engine
+    framework.utils.singletons.db.initialize_db()
 
     engine = engine.execution_options(isolation_level="AUTOCOMMIT")
     return engine

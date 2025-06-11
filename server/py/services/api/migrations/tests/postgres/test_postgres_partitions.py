@@ -23,90 +23,76 @@ import framework.db.sqldb.db
 
 
 @pytest.mark.usefixtures("pmr_postgres_container")
-def test_create_partitions_via_interval(alembic_engine):
-    session_maker = sessionmaker(bind=alembic_engine)
-    session = session_maker()
+def test_create_partitions_postgres(alembic_engine):
+    session = sessionmaker(bind=alembic_engine)()
     table = "dyn_table"
-    # 1) create a RANGE-partitioned table
+
     session.execute(
         text(f"""
         CREATE TABLE {table} (
             id   INTEGER NOT NULL,
             data TEXT
         ) PARTITION BY RANGE (id);
-    """)
+
+        CREATE TABLE p0 PARTITION OF {table}
+        FOR VALUES FROM (MINVALUE) TO (1);
+        """)
     )
 
-    # 2) generate two daily partitions starting Jan 1, 2025
     start = datetime(2025, 1, 1)
     parts = mlrun.common.schemas.PartitionInterval.DAY.get_partition_info(
-        start,
-        partition_number=2,
+        start, partition_number=2
     )
-    # parts looks like [("20250101","20250102"), ("20250102","20250103")]
-
     framework.db.sqldb.db.PostgreSQLDB.create_partitions(session, table, parts)
 
-    # 3) verify attachments
-    attached = {
-        row[0]
-        for row in session.execute(
-            text("""
-                  SELECT c.relname
-                  FROM pg_inherits inh
-                           JOIN pg_class AS c ON inh.inhrelid = c.oid
-                  WHERE inh.inhparent = (:table)::regclass
-            """),
-            {"table": table},
-        )
-    }
-    assert {name for name, _ in parts} <= attached
+    attached = set(
+        framework.db.sqldb.db.PostgreSQLDB._get_partition_metadata(
+            session, table
+        ).keys()
+    )
+    expected = {name for name, _ in parts}.union({"p0"})
+    assert attached == expected
     session.close()
 
 
 @pytest.mark.usefixtures("pmr_postgres_container")
-def test_drop_partitions_via_interval(alembic_engine):
-    session_maker = sessionmaker(bind=alembic_engine)
-    session = session_maker()
+def test_drop_partitions_postgres(alembic_engine):
+    session = sessionmaker(bind=alembic_engine)()
     table = "dyn_table_drop"
-    # setup: table + three weekly partitions
+
+    # 1) base table + seed p0
     session.execute(
         text(f"""
         CREATE TABLE {table} (
             id   INTEGER NOT NULL,
             data TEXT
         ) PARTITION BY RANGE (id);
-    """)
-    )
-    start = datetime(2025, 1, 6)  # a Monday
-    parts = mlrun.common.schemas.PartitionInterval.YEARWEEK.get_partition_info(
-        start,
-        partition_number=3,
-    )
-    # e.g. [("202501","202502"),("202502","202503"),("202503","202504")]
 
+        CREATE TABLE p0 PARTITION OF {table}
+        FOR VALUES FROM (MINVALUE) TO (1);
+        """)
+    )
+
+    start = datetime(2025, 1, 6)
+    parts = mlrun.common.schemas.PartitionInterval.YEARWEEK.get_partition_info(
+        start, partition_number=3
+    )
     framework.db.sqldb.db.PostgreSQLDB.create_partitions(session, table, parts)
-    # drop those < the second one (cutoff = parts[1][0])
+
     cutoff = parts[1][0]
     framework.db.sqldb.db.PostgreSQLDB.drop_partitions(
-        session,
-        table,
-        cutoff_partition_name=cutoff,
+        session, table, cutoff_partition_name=cutoff
     )
 
-    # only partitions ≥ cutoff should remain
-    remaining = {
-        row[0]
-        for row in session.execute(
-            text("""
-                  SELECT c.relname
-                  FROM pg_inherits AS inh
-                           JOIN pg_class AS c ON inh.inhrelid = c.oid
-                  WHERE inh.inhparent = (:table)::regclass
-            """),
-            {"table": table},
-        )
-    }
-    assert cutoff in remaining
-    assert parts[0][0] not in remaining
+    remaining = set(
+        framework.db.sqldb.db.PostgreSQLDB._get_partition_metadata(
+            session, table
+        ).keys()
+    )
+
+    assert parts[0][0] not in remaining  # oldest gone
+    assert cutoff in remaining  # cutoff kept
+    newer = {name for name, _ in parts[2:]}  # newest kept
+    assert newer <= remaining
+
     session.close()

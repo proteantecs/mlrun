@@ -18,6 +18,8 @@ import pytest_mock_resources
 
 import mlrun
 
+import framework.utils.singletons.db
+
 mysql = pytest_mock_resources.create_mysql_fixture()
 
 
@@ -27,6 +29,7 @@ def alembic_engine(mysql):
     mlrun.mlconf.reload()
     engine = mysql.engine
 
+    framework.utils.singletons.db.initialize_db()
     engine = engine.execution_options(isolation_level="AUTOCOMMIT")
     return engine
 

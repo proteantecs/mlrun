@@ -133,7 +133,9 @@ def test_drop_old_partitions(
         )
 
         mocked_db_drop_partitions.assert_called_once_with(
-            db, "alert_activations", expected_cutoff_name
+            session=db,
+            table_name="alert_activations",
+            cutoff_partition_name=expected_cutoff_name,
         )
 
 

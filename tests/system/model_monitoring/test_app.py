@@ -679,6 +679,7 @@ class TestMonitoringAppFlow(TestMLRunSystemModelMonitoring, _V3IORecordsChecker)
         assert evidently_func_summary.stats["potential_detection"] == 1
         assert evidently_func_summary.stats["detected"] == 0
 
+    @pytest.mark.smoke_mm
     @pytest.mark.parametrize("with_training_set", [True, False])
     def test_app_flow(self, with_training_set: bool) -> None:
         self.project = typing.cast(mlrun.projects.MlrunProject, self.project)

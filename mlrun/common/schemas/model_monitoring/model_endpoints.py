@@ -124,7 +124,7 @@ class ModelEndpointMetadata(ObjectMetadata, ModelEndpointParser):
         return ["labels"]
 
     @validator("uid", pre=True)
-    def _uid_to_str(cls, v):
+    def _uid_to_str(cls, v):  # noqa: N805
         if isinstance(v, UUID):
             return str(v)
         return v

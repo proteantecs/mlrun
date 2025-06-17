@@ -934,10 +934,6 @@ class RetryBackoff(ModelObj):
             base_delay or mlrun.mlconf.function.spec.retry.backoff.default_base_delay
         )
 
-    def get_delay(self, attempt: int) -> int:
-        # Currently supports only linear backoff
-        return self.base_delay * attempt
-
 
 class Retry(ModelObj):
     """Retry configuration"""
@@ -999,7 +995,7 @@ class RunSpec(ModelObj):
         node_selector=None,
         tolerations=None,
         affinity=None,
-        retry: Retry = None,
+        retry=None,
     ):
         # A dictionary of parsing configurations that will be read from the inputs the user set. The keys are the inputs
         # keys (parameter names) and the values are the type hint given in the input keys after the colon.
@@ -1040,7 +1036,7 @@ class RunSpec(ModelObj):
         self.node_selector = node_selector or {}
         self.tolerations = tolerations or {}
         self.affinity = affinity or {}
-        self.retry = retry
+        self.retry = retry or {}
 
     def _serialize_field(
         self, struct: dict, field_name: Optional[str] = None, strip: bool = False
@@ -1367,6 +1363,7 @@ class RunStatus(ModelObj):
         reason: Optional[str] = None,
         notifications: Optional[dict[str, Notification]] = None,
         artifact_uris: Optional[dict[str, str]] = None,
+        retry_count: Optional[int] = None,
     ):
         self.state = state or "created"
         self.status_text = status_text
@@ -1384,6 +1381,7 @@ class RunStatus(ModelObj):
         self.notifications = notifications or {}
         # Artifact key -> URI mapping, since the full artifacts are not stored in the runs DB table
         self._artifact_uris = artifact_uris or {}
+        self._retry_count = retry_count or None
 
     @classmethod
     def from_dict(
@@ -1436,6 +1434,21 @@ class RunStatus(ModelObj):
             resolved_artifact_uris = artifact_uris
 
         self._artifact_uris = resolved_artifact_uris
+
+    @property
+    def retry_count(self) -> Optional[int]:
+        """
+        The number of retries that were made for this run.
+        """
+        return self._retry_count
+
+    @retry_count.setter
+    def retry_count(self, retry_count: int):
+        """
+        Set the number of retries that were made for this run.
+        :param retry_count: The number of retries.
+        """
+        self._retry_count = retry_count
 
     def is_failed(self) -> Optional[bool]:
         """

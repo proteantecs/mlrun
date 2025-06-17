@@ -21,6 +21,7 @@ import pandas as pd
 import pytest
 
 import mlrun
+import mlrun.common.runtimes.constants
 import mlrun.common.schemas
 import mlrun.feature_store.common
 import mlrun.model
@@ -449,7 +450,7 @@ class TestKubejobRuntime(tests.system.base.TestMLRunSystem):
         runs = mlrun.get_run_db().list_runs(
             project=self.project_name,
             end_time_from=beginning_time,
-            states=mlrun.common.runtimes.constants.RunStates.error,
+            states=[mlrun.common.runtimes.constants.RunStates.error],
         )
         assert len(runs) == 1
 
@@ -458,7 +459,7 @@ class TestKubejobRuntime(tests.system.base.TestMLRunSystem):
         runs = mlrun.get_run_db().list_runs(
             project=self.project_name,
             end_time_from=now,
-            states=mlrun.common.runtimes.constants.RunStates.error,
+            states=[mlrun.common.runtimes.constants.RunStates.error],
         )
         assert len(runs) == 0
 
@@ -685,3 +686,48 @@ def print_df(df):
         assert background_task.metadata.name in [
             task.metadata.name for task in background_tasks
         ]
+
+    def test_retry_job_exhausted(self):
+        code_path = str(self.assets_path / "raise_func.py")
+
+        function = self.project.set_function(
+            code_path,
+            name="raise-func",
+            kind="job",
+            handler="handler",
+        )
+
+        retry_count = 3
+        retry = mlrun.model.Retry(
+            count=retry_count,
+        )
+
+        with pytest.raises(mlrun.runtimes.utils.RunError):
+            function.run(verbose=True, retry=retry)
+
+        runs = self._run_db.list_runs(project=self.project_name)
+        assert len(runs) == 1
+        run = mlrun.RunObject.from_dict(runs[0])
+        assert run.status.retry_count is None
+        assert (
+            run.status.state == mlrun.common.runtimes.constants.RunStates.pending_retry
+        )
+        assert f"Run failed attempt 1 of {retry_count}" in run.status.status_text
+
+        def _assert_retry_count():
+            runs = self._run_db.list_runs(project=self.project_name)
+            assert len(runs) == 1
+            run = mlrun.RunObject.from_dict(runs[0])
+            assert run.status.retry_count == 3
+            assert run.status.state == mlrun.common.runtimes.constants.RunStates.error
+            assert (
+                run.status.status_text == f"Run failed after {retry_count + 1} attempts"
+            )
+
+        mlrun.utils.retry_until_successful(
+            1,
+            200,
+            self._logger,
+            True,
+            _assert_retry_count,
+        )

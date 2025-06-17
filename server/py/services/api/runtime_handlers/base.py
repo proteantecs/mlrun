@@ -1380,7 +1380,7 @@ class BaseRuntimeHandler(ABC):
         # (A runtime resource might exist before the run is created)
         self._update_ui_url(db, db_session, project, uid, runtime_resource, run)
 
-        if updated_run_state in RunStates.terminal_states():
+        if updated_run_state in RunStates.terminal_or_error_states():
             self._ensure_run_logs_collected(db, db_session, project, uid, run=run)
 
     def _resolve_resource_state_and_apply_threshold(
@@ -1751,6 +1751,16 @@ class BaseRuntimeHandler(ABC):
             elif run_state == RunStates.error:
                 # Try resolving the error reason
                 reason, message = self._resolve_container_error_status(runtime_resource)
+                # Should run be retried
+                retry_spec = run.get("spec", {}).get("retry")
+                max_retries = retry_spec.get("count") if retry_spec else -1
+                # Run status retry_count may be `None` if the run has never been retried
+                retry_count = run.get("status", {}).get("retry_count", 0) or 0
+                if retry_count < max_retries:
+                    run_state = RunStates.pending_retry
+                    message = f"Run failed attempt {retry_count + 1} of {max_retries} with error: {message or reason}"
+                elif 0 < max_retries <= retry_count:
+                    message = f"Run failed after {retry_count + 1} attempts with error: {message or reason}"
 
         logger.info("Updating run state", run_uid=uid, run_state=run_state)
         run_updates = {

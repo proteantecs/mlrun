@@ -18,6 +18,7 @@ import os
 import uuid
 from typing import Any, Callable, Optional, Union
 
+import mlrun.common.runtimes.constants
 import mlrun.common.schemas
 import mlrun.config
 import mlrun.errors
@@ -197,8 +198,6 @@ class BaseLauncher(abc.ABC):
 
     @staticmethod
     def _create_run_object(task):
-        valid_task_types = (dict, mlrun.run.RunTemplate, mlrun.run.RunObject)
-
         if not task:
             # if task passed generate default RunObject
             return mlrun.run.RunObject.from_dict(task)
@@ -209,18 +208,18 @@ class BaseLauncher(abc.ABC):
         if isinstance(task, str):
             task = ast.literal_eval(task)
 
-        if not isinstance(task, valid_task_types):
-            raise mlrun.errors.MLRunInvalidArgumentError(
-                f"Task is not a valid object, type={type(task)}, expected types={valid_task_types}"
-            )
-
+        valid_task_types = (dict, mlrun.run.RunTemplate, mlrun.run.RunObject)
+        if isinstance(task, mlrun.run.RunObject):
+            # if task is already a RunObject, we can return it as is
+            return task
         if isinstance(task, mlrun.run.RunTemplate):
             return mlrun.run.RunObject.from_template(task)
         elif isinstance(task, dict):
             return mlrun.run.RunObject.from_dict(task)
 
-        # task is already a RunObject
-        return task
+        raise mlrun.errors.MLRunInvalidArgumentError(
+            f"Task is not a valid object, type={type(task)}, expected types={valid_task_types}"
+        )
 
     @staticmethod
     def _enrich_run(
@@ -359,7 +358,11 @@ class BaseLauncher(abc.ABC):
             | state_thresholds
         )
         run.spec.state_thresholds = state_thresholds or run.spec.state_thresholds
-        run.spec.retry = retry
+        run.spec.retry = retry or run.spec.retry
+        if run.status.state == mlrun.common.runtimes.constants.RunStates.pending_retry:
+            run.status.state = mlrun.common.runtimes.constants.RunStates.running
+            run.status.retry_count = run.status.retry_count or 0  # in case it is none
+            run.status.retry_count += 1  # increment by one
         return run
 
     @staticmethod
@@ -406,7 +409,7 @@ class BaseLauncher(abc.ABC):
             )
             if (
                 run.status.state
-                in mlrun.common.runtimes.constants.RunStates.error_and_abortion_states()
+                in mlrun.common.runtimes.constants.RunStates.error_states()
             ):
                 if runtime._is_remote and not runtime.is_child:
                     logger.error(
@@ -414,7 +417,14 @@ class BaseLauncher(abc.ABC):
                         state=run.status.state,
                         status=run.status.to_dict(),
                     )
-                raise mlrun.runtimes.utils.RunError(run.error)
+
+                error = run.error
+                if (
+                    run.status.state
+                    == mlrun.common.runtimes.constants.RunStates.pending_retry
+                ):
+                    error = f"Run is pending retry, error: {run.error}"
+                raise mlrun.runtimes.utils.RunError(error)
             return run
 
         return None

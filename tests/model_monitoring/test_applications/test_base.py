@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import uuid
 from collections.abc import Iterator
 from contextlib import AbstractContextManager
 from contextlib import nullcontext as does_not_raise
@@ -441,7 +440,7 @@ class TestToJob:
         [
             (
                 "2e312eb7-bbcc-4752-9140-be9e9395fc13",
-                uuid.UUID("2e312eb7-bbcc-4752-9140-be9e9395fc13"),
+                "2e312eb7-bbcc-4752-9140-be9e9395fc13",
             )
         ],
     ],
@@ -457,6 +456,6 @@ def test_handle_endpoints_type_evaluate(
     assert endpoints_output == [
         (
             "2e312eb7-bbcc-4752-9140-be9e9395fc13",
-            uuid.UUID("2e312eb7-bbcc-4752-9140-be9e9395fc13"),
+            "2e312eb7-bbcc-4752-9140-be9e9395fc13",
         )
     ]

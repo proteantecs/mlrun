@@ -99,7 +99,11 @@ def test_fqn_parsing(
             True,
             pytest.raises(
                 pydantic.v1.ValidationError,
-                match=re.escape("value is not a valid uuid"),
+                match=re.escape(
+                    "1 validation error for ModelEndpointMetadata\nuid\n  "
+                    "string does not match regex "
+                    '"^[a-zA-Z0-9_-]+$" (type=value_error.str.regex; pattern=^[a-zA-Z0-9_-]+$)'
+                ),
             ),
         ),
         (

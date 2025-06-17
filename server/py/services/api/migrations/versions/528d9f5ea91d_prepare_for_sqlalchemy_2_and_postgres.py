@@ -36,19 +36,6 @@ def upgrade():
         existing_type=mysql.INTEGER(),
         nullable=False,
     )
-    op.drop_constraint(
-        "alert_configs_notifications_ibfk_1",
-        "alert_configs_notifications",
-        type_="foreignkey",
-    )
-    op.create_foreign_key(
-        "alert_configs_notifications_parent_fk",
-        "alert_configs_notifications",
-        "alert_configs",
-        ["parent_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
 
     op.drop_constraint(
         "_artifacts_tags_obj_id_fk",
@@ -70,19 +57,6 @@ def upgrade():
         existing_type=mysql.INTEGER(),
         nullable=False,
     )
-    op.drop_constraint(
-        "runs_notifications_ibfk_1",
-        "runs_notifications",
-        type_="foreignkey",
-    )
-    op.create_foreign_key(
-        "runs_notifications_parent_fk",
-        "runs_notifications",
-        "runs",
-        ["parent_id"],
-        ["id"],
-        ondelete="CASCADE",
-    )
 
     op.drop_constraint(
         "_runs_tags_obj_id_fk",
@@ -100,18 +74,6 @@ def upgrade():
 
 
 def downgrade():
-    op.drop_constraint(
-        "alert_configs_notifications_parent_fk",
-        "alert_configs_notifications",
-        type_="foreignkey",
-    )
-    op.create_foreign_key(
-        "alert_configs_notifications_ibfk_1",
-        "alert_configs_notifications",
-        "alert_configs",
-        ["parent_id"],
-        ["id"],
-    )
     op.alter_column(
         "alert_configs_notifications",
         "parent_id",
@@ -132,18 +94,6 @@ def downgrade():
         ["id"],
     )
 
-    op.drop_constraint(
-        "runs_notifications_parent_fk",
-        "runs_notifications",
-        type_="foreignkey",
-    )
-    op.create_foreign_key(
-        "runs_notifications_ibfk_1",
-        "runs_notifications",
-        "runs",
-        ["parent_id"],
-        ["id"],
-    )
     op.alter_column(
         "runs_notifications",
         "parent_id",

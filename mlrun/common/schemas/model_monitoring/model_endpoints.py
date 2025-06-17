@@ -13,6 +13,7 @@
 # limitations under the License.
 import abc
 import json
+import uuid
 from datetime import datetime
 from typing import Any, NamedTuple, Optional, TypeVar
 
@@ -24,7 +25,6 @@ from ..object import ObjectKind, ObjectMetadata, ObjectSpec, ObjectStatus
 from . import ModelEndpointSchema
 from .constants import (
     FQN_REGEX,
-    MODEL_ENDPOINT_ID_PATTERN,
     PROJECT_PATTERN,
     EndpointType,
     ModelEndpointMonitoringMetricType,
@@ -115,7 +115,7 @@ class ModelEndpointParser(abc.ABC, BaseModel):
 class ModelEndpointMetadata(ObjectMetadata, ModelEndpointParser):
     project: constr(regex=PROJECT_PATTERN)
     endpoint_type: EndpointType = EndpointType.NODE_EP
-    uid: Optional[constr(regex=MODEL_ENDPOINT_ID_PATTERN)]
+    uid: Optional[uuid.UUID]
 
     @classmethod
     def mutable_fields(cls):

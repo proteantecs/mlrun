@@ -35,6 +35,7 @@ from sqlalchemy import (
     text,
 )
 from sqlalchemy.engine import Connection
+from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import Mapper, declared_attr, relationship
 
@@ -483,7 +484,10 @@ with warnings.catch_warnings():
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.uid}/{self.iteration}"
 
-    class BackgroundTask(Base, mlrun.utils.db.BaseModel):
+    class BackgroundTask(
+        Base,
+        mlrun.utils.db.BaseModel,
+    ):
         __tablename__ = "background_tasks"
         __table_args__ = (
             UniqueConstraint("name", "project", name="_background_tasks_uc"),
@@ -499,6 +503,12 @@ with warnings.catch_warnings():
         updated = Column(
             mlrun.db.sql_types.DateTime,
             default=lambda: datetime.now(timezone.utc),
+            onupdate=lambda: datetime.now(timezone.utc),
+        )
+        state = Column(
+            String(255, collation=SQLTypesUtil.collation()),
+            nullable=True,
+            index=True,
         )
         state = Column(mlrun.db.sql_types.Utf8BinText)
         error = Column(mlrun.db.sql_types.Utf8BinText)
@@ -506,6 +516,30 @@ with warnings.catch_warnings():
 
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
+
+    class BackgroundTaskLabel(Base):
+        __tablename__ = "background_task_labels"
+        __table_args__ = (
+            UniqueConstraint(
+                "task_id", "name", name="uq_bg_task_labels_task_id_and_name"
+            ),
+        )
+
+        id = Column(Integer, primary_key=True)
+        task_id = Column(
+            Integer,
+            ForeignKey("background_tasks.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        )
+        name = Column(mlrun.db.sql_types.Utf8BinText, nullable=False)
+        value = Column(mlrun.db.sql_types.Utf8BinText, nullable=False)
+
+        task = relationship(
+            "BackgroundTask",
+            back_populates="labels",
+        )
+        project = association_proxy("task", "project")
 
     class Schedule(Base, LabelMixin, mlrun.utils.db.BaseModel):
         __tablename__ = "schedules_v2"

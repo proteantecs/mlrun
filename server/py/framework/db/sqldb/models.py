@@ -509,6 +509,13 @@ with warnings.catch_warnings():
         error = Column(mlrun.db.sql_types.Utf8BinText)
         timeout = Column(Integer)
 
+        labels = relationship(
+            "BackgroundTaskLabel",
+            back_populates="task",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        )
+
         def get_identifier_string(self) -> str:
             return f"{self.project}/{self.name}"
 

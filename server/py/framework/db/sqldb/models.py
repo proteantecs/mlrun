@@ -505,12 +505,7 @@ with warnings.catch_warnings():
             default=lambda: datetime.now(timezone.utc),
             onupdate=lambda: datetime.now(timezone.utc),
         )
-        state = Column(
-            String(255, collation=SQLTypesUtil.collation()),
-            nullable=True,
-            index=True,
-        )
-        state = Column(mlrun.db.sql_types.Utf8BinText)
+        state = Column(mlrun.db.sql_types.Utf8BinText, index=True)
         error = Column(mlrun.db.sql_types.Utf8BinText)
         timeout = Column(Integer)
 

@@ -1,4 +1,4 @@
-# Copyright 2023 Iguazio
+# Copyright 2025 Iguazio
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,25 +11,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+import mlrun.common.types
 
 
-from .mysql import MySQLUtil
-
-
-# TODO: Remove this class and usages once old alembic migrations that use it are squashed.
-class Collations:
-    sqlite = None
-    mysql = "utf8mb3_bin"
+class Dialects(mlrun.common.types.StrEnum):
+    MYSQL = "mysql"
+    POSTGRESQL = "postgresql"
+    SQLITE = "sqlite"
 
     @classmethod
-    def collation(cls):
-        mysql_dsn_data = MySQLUtil.get_mysql_dsn_data()
-        if mysql_dsn_data:
-            return cls.mysql
-        return cls.sqlite
-
-
-class SQLTypesUtil:
-    @classmethod
-    def collation(cls):
-        return Collations.collation()
+    def all(cls) -> list[str]:
+        """Return all dialects as a list of strings."""
+        return [dialect.value for dialect in cls]

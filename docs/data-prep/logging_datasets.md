@@ -21,8 +21,8 @@ The following example shows how to work with datasets from a job:
 
 ``` python
 from os import path
-from mlrun.execution import MLClientCtx
-from mlrun.datastore import DataItem
+import mlrun.execution
+import mlrun.datastore
 
 
 # Ingest a data set into the platform
@@ -48,7 +48,7 @@ This code can be placed in a python file, or as a cell in the Python notebook.
 You can run this function locally or as a job. For example, to run it locally:
 ``` python
 from os import path
-from mlrun import new_project, mlconf
+import mlrun
 
 project_name = "my-project"
 project_path = path.abspath("conf")

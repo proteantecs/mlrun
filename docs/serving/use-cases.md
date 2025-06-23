@@ -94,9 +94,11 @@ Create a new function of type serving from code and set the graph topology to `a
 ```python
 import mlrun
 
-function = mlrun.code_to_function(
+project = mlrun.get_or_create_project("myproj")
+
+function = mlrun.set_function(
     "advanced",
-    filename="demo.py",
+    func="<path to demo.py>",
     kind="serving",
     image="mlrun/mlrun",
     requirements=["storey"],
@@ -163,8 +165,10 @@ See the [full notebook example](./distributed-graph.ipynb).
 
 ```python
 # define a new real-time serving function (from code) with an async graph
-fn = mlrun.code_to_function(
-    "multi-func", filename="./data_prep.py", kind="serving", image="mlrun/mlrun"
+project = mlrun.get_or_create_project("myproj")
+
+fn = mlrun.set_function(
+    "multi-func", func="<path to data_prep.py>", kind="serving", image="mlrun/mlrun"
 )
 graph = fn.set_topology("flow", engine="async")
 

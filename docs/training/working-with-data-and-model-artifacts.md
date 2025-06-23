@@ -148,14 +148,16 @@ def train_iris(context: MLClientCtx):
     )
 ```
 
-Save the code above to `train_iris.py`. The following code loads the function and runs it as a job. See the [Quick start tutorial](../tutorials/01-mlrun-basics.ipynb) to learn how to create the project and set the artifact path. 
+Save the code above to `train_iris.py`. The following code loads the function and runs it as a job. See [Artifact path](../store/artifacts.md#artifact-path) to learn how to set the artifact path. 
 
 ``` python
-from mlrun import code_to_function
+import mlrun
 
-gen_func = code_to_function(
+project = mlrun.get_or_create_project("myproj")
+
+gen_func = set_function(
     name="train_iris",
-    filename="train_iris.py",
+    func="<path to train_iris.py>",
     handler="train_iris",
     kind="job",
     image="mlrun/mlrun",
@@ -179,10 +181,10 @@ model with the test data and updates the model with the metrics and results of t
 ``` python
 from pickle import load
 
-from mlrun.execution import MLClientCtx
-from mlrun.datastore import DataItem
-from mlrun.artifacts import get_model, update_model
-from mlrun.mlutils import eval_model_v2
+import mlrun.execution 
+import mlrun.datastore 
+import mlrun.artifacts 
+import mlrun.mlutils
 
 
 def test_model(
@@ -211,9 +213,11 @@ To run the code, place the code above in `test_model.py` and use the following s
 ``` python
 from mlrun.platforms import auto_mount
 
-gen_func = code_to_function(
+project = mlrun.get_or_create_project("myproj")
+
+gen_func = set_function(
     name="test_model",
-    filename="test_model.py",
+    func="<path to test_model.py>",
     handler="test_model",
     kind="job",
     image="mlrun/mlrun",

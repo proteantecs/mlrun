@@ -489,6 +489,7 @@ class Service(framework.service.Service):
             run_kind = run.get("metadata", {}).get("labels", {}).get("kind", None)
             project_name = run.get("metadata", {}).get("project", None)
             run_uid = run.get("metadata", {}).get("uid", None)
+            retry_count = run.get("status", {}).get("retry_count", None)
 
             # information for why runtime isn't log collectable is inside the method
             if not mlrun.runtimes.RuntimeKinds.is_log_collectable_runtime(run_kind):
@@ -509,9 +510,16 @@ class Service(framework.service.Service):
                     # runtimes that the user will create with hundreds of resources (e.g mpi job can have multiple
                     # workers which aren't really important for log collection
                     with_main_runtime_resource_label_selector=True,
+                    retry_count=retry_count,
                 )
+                logs_run_uid = run_uid
+                if retry_count:
+                    # Adding the attempt number to the run uid since the log collector does not support multiple pods
+                    # per run uid. This separates the attempts so that each attempt has its own logs file.
+                    # Incrementing the retry count by 1 since the first retry is the 2nd attempt and so on.
+                    logs_run_uid = f"{run_uid}-attempt-{int(retry_count)+1}"
                 success, _ = await logs_collector_client.start_logs(
-                    run_uid=run_uid,
+                    run_uid=logs_run_uid,
                     selector=label_selector,
                     project=project_name,
                     best_effort=best_effort,
@@ -528,6 +536,7 @@ class Service(framework.service.Service):
                 self._logger.warning(
                     "Failed to start logs for run",
                     run_uid=run_uid,
+                    retry_count=retry_count,
                     exc=mlrun.errors.err_to_str(exc),
                 )
                 return None

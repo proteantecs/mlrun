@@ -1,25 +1,25 @@
 (load-from-hub)=
-# Function hub <!-- omit in toc -->
+# MLRun hub <!-- omit in toc -->
 
 This section demonstrates how to import a function from the hub into your project, and provides some basic instructions on how to run the function and view the results.
 
 **In this section**
-- [MLRun Function hub](#mlrun-function-hub)
+- [MLRun hub](#mlrun-function-hub)
 - [Custom function hub](#custom-function-hub)
 - [Setting the project configuration](#setting-the-project-configuration)
 - [Loading functions from the hub](#loading-functions-from-the-hub)
 - [View the function params](#view-the-function-params)
 - [Running the function](#running-the-function)
 
-## MLRun function hub
+## MLRun hub
 
-The MLRun function hub has a wide range of functions that can be used for a variety of use cases.
+The MLRun hub has a wide range of functions and models that can be used for a variety of use cases.
 There are functions for ETL, data preparation, training (ML & Deep learning), serving, alerts and notifications and more.
 Each function has a docstring that explains how to use it. In addition, the functions are associated with categories to make it easier for you to find the relevant one.
 
 Functions can be easily imported into your project and therefore help you to speed up your development cycle by reusing built-in code.
 
-The function hub is located [here](https://www.mlrun.org/hub/). <br>
+The MLRun hub is located [here](https://www.mlrun.org/hub/). <br>
 You can search and filter the categories and kinds to find a function that meets your needs.
 
 ![Hub](../_static/images/marketplace-ui.png)
@@ -29,7 +29,7 @@ You can create your own function hub, and connect it to MLRun. Then you can impo
 
 ### Create a custom hub
 
-You can either fork the [MLRun function hub repo](https://github.com/mlrun/functions) and add to it your Git repo, or create a hub from scratch.
+You can either fork the [MLRun hub repo](https://github.com/mlrun/functions) and add to it your Git repo, or create a hub from scratch.
 Read [CONTRIBUTING.md](https://github.com/mlrun/functions) to learn how to create a function.
 ```{Note}
 Make sure your hub source is accessible via GitHub (private is also possible).
@@ -119,7 +119,7 @@ mlconf.dbpath = mlconf.dbpath or "http://mlrun-api:8080"
 print(f"Artifacts path: {artifact_path}\nMLRun DB path: {mlconf.dbpath}")
 ```
 
-## Loading functions from the hub
+## Loading functions from the MLRun hub
 
 Run `project.set_function` to add or update a function object to the project.
 
@@ -138,7 +138,7 @@ See all the parameters in {py:meth}`~mlrun.projects.MlrunProject.set_function` A
 ### Load function example
 
 The `describe` function analyzes a csv or parquet file for data analysis. 
-To load the `describe` function from the MLRun function hub:
+To load the `describe` function from the MLRun hub:
 
 ```python
 project.set_function("hub://describe", "describe")

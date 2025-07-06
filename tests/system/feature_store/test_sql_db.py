@@ -27,7 +27,6 @@ import mlrun.common.db.dialects
 import mlrun.feature_store as fstore
 from mlrun.datastore.sources import SQLSource
 from mlrun.datastore.targets import SQLTarget
-from mlrun.db.sql_types import MicroSecondDateTime
 from mlrun.feature_store.steps import OneHotEncoder
 from tests.system.base import TestMLRunSystem
 
@@ -57,6 +56,11 @@ class DateTime(TypeDecorator):
                 )
             )
         return dialect.type_descriptor(sqlalchemy.types.DateTime)
+
+
+class MicroSecondDateTime(DateTime):
+    cache_ok = True
+    precision: int = 6
 
 
 @pytest.mark.skipif(

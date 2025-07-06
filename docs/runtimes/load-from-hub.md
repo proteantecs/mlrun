@@ -7,7 +7,7 @@ This section demonstrates how to import a function from the hub into your projec
 - [MLRun hub](#mlrun-hub)
 - [Custom hub](#custom-hub)
 - [Setting the project configuration](#setting-the-project-configuration)
-- [Loading functions from the hub](#loading-functions-from-the-hub)
+- [Loading functions from the MLRun hub](#loading-functions-from-the-mlrun-hub)
 - [View the function params](#view-the-function-params)
 - [Running the function](#running-the-function)
 

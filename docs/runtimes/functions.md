@@ -27,7 +27,7 @@ while they execute, such as training a model. See {ref}`decorators-and-auto-logg
 
 **In this section**
 - [Functions and projects](#functions-and-projects)
-- [MLRun hub](#function-hub)
+- [MLRun hub](#mlrun-hub)
 - [Distributed functions](#distributed-functions)
 - [Hyperparameters](#hyperparameters)
 

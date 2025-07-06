@@ -902,6 +902,13 @@ class SQLRunDB(RunDBInterface):
             function,
         )
 
+    def get_project_background_task(
+        self,
+        project: str,
+        name: str,
+    ) -> mlrun.common.schemas.BackgroundTask:
+        raise NotImplementedError()
+
     def list_hub_sources(
         self,
         item_name: Optional[str] = None,
@@ -925,6 +932,15 @@ class SQLRunDB(RunDBInterface):
             str, mlrun.common.formatters.PipelineFormat
         ] = mlrun.common.formatters.PipelineFormat.summary,
         project: Optional[str] = None,
+    ):
+        raise NotImplementedError()
+
+    def retry_pipeline(
+        self,
+        run_id: str,
+        project: str,
+        namespace: Optional[str] = None,
+        timeout: int = 30,
     ):
         raise NotImplementedError()
 
@@ -1263,6 +1279,16 @@ class SQLRunDB(RunDBInterface):
         include_stats: bool = False,
         include_infra: bool = True,
     ) -> [mlrun.common.schemas.model_monitoring.FunctionSummary]:
+        raise NotImplementedError
+
+    def get_monitoring_function_summary(
+        self,
+        project: str,
+        function_name: str,
+        start: Optional[datetime.datetime] = None,
+        end: Optional[datetime.datetime] = None,
+        include_latest_metrics: bool = False,
+    ) -> mlrun.common.schemas.model_monitoring.FunctionSummary:
         raise NotImplementedError
 
     def _transform_db_error(self, func, *args, **kwargs):

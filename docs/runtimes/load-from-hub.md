@@ -4,8 +4,8 @@
 This section demonstrates how to import a function from the hub into your project, and provides some basic instructions on how to run the function and view the results.
 
 **In this section**
-- [MLRun hub](#mlrun-function-hub)
-- [Custom function hub](#custom-function-hub)
+- [MLRun hub](#mlrun-hub)
+- [Custom hub](#custom-hub)
 - [Setting the project configuration](#setting-the-project-configuration)
 - [Loading functions from the hub](#loading-functions-from-the-hub)
 - [View the function params](#view-the-function-params)
@@ -13,9 +13,10 @@ This section demonstrates how to import a function from the hub into your projec
 
 ## MLRun hub
 
-The MLRun hub has a wide range of functions and models that can be used for a variety of use cases.
+The MLRun hub has a wide range of functions and modules that can be used for a variety of use cases.
 There are functions for ETL, data preparation, training (ML & Deep learning), serving, alerts and notifications and more.
-Each function has a docstring that explains how to use it. In addition, the functions are associated with categories to make it easier for you to find the relevant one.
+There are modules for application runtime and monitoring applications. 
+Each function has a docstring that explains how to use it. The functions and modules are categorized and their associated versions are listed, so you can easily find a suitable function/module for your needs.
 
 Functions can be easily imported into your project and therefore help you to speed up your development cycle by reusing built-in code.
 
@@ -24,8 +25,8 @@ You can search and filter the categories and kinds to find a function that meets
 
 ![Hub](../_static/images/marketplace-ui.png)
 
-## Custom function hub
-You can create your own function hub, and connect it to MLRun. Then you can import functions (with their tags) from your custom hub.
+## Custom hub
+You can create your own hub, and connect it to MLRun. Then you can import functions (with their tags) from your custom hub.
 
 ### Create a custom hub
 
@@ -35,7 +36,7 @@ Read [CONTRIBUTING.md](https://github.com/mlrun/functions) to learn how to creat
 Make sure your hub source is accessible via GitHub (private is also possible).
 ```
 
-To create a function hub from scratch, the hub structure must be the same as the [MLRun hub](https://github.com/mlrun/marketplace).
+To create a hub from scratch, the hub structure must be the same as the [MLRun hub](https://github.com/mlrun/marketplace).
 
 The hierarchy must be:
 
@@ -65,7 +66,7 @@ When you add a hub, specify `order=-1` to add it to the top of the list.
 The list order is relevant when [loading a function](#load-function-example):
 if you don't specify a hub name, MLRun starts searching for the function with the last added hub.
 If you want to add a hub but not at the top of the list, view the current list using {py:meth}`~mlrun.db.httpdb.HTTPRunDB.list_hub_source`.
-The MLRun function hub is always the last in the list (and cannot be modified). 
+The MLRun hub is always the last in the list (and cannot be modified). 
 
 
 To add a hub, run:
@@ -214,6 +215,6 @@ my_describe.run(
 ### Viewing the jobs & the artifacts  <!-- omit in toc -->
 
 There are few options to view the outputs of the jobs you ran:
-
-- In Jupyter the result of the job is displayed in the Jupyter notebook. When you click on the artifacts it displays its content in Jupyter.
 - In the MLRun UI, under the project name, you can view the job that was running as well as the artifacts it generated.
+- In Jupyter the result of the job is displayed in the Jupyter notebook. When you click on the artifacts it displays its content in Jupyter.
+

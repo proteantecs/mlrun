@@ -198,6 +198,76 @@ class ServerSideLauncher(launcher.BaseLauncher):
 
         return self._wrap_run_result(runtime, result, run, err=last_err)
 
+    def enrich_runtime(
+        self,
+        runtime: "mlrun.runtimes.base.BaseRuntime",
+        project_name: Optional[str] = "",
+        full: bool = True,
+        client_version: str = "",
+    ):
+        """
+        Enrich the runtime object with the project spec and metadata.
+        This is done only on the server side, since it's the source of truth for the project, and we want to keep the
+        client side enrichment as minimal as possible.
+        :param runtime:         the runtime object to enrich
+        :param project_name:    the project name of the project to enrich the runtime with
+        :param full:            whether to enrich the runtime with the project's full spec (before run)
+                                e.g. mount, service account, etc.
+        :param client_version:  MLRun client version
+        """
+
+        # if auth given in request ensure the function pod will have these auth env vars set, otherwise the job won't
+        # be able to communicate with the api
+        framework.api.utils.ensure_function_has_auth_set(
+            runtime, self._auth_info, allow_empty_access_key=not full
+        )
+
+        if full:
+            self._enrich_full_spec(runtime)
+        # mask sensitive data after full spec enrichment in case auth was enriched by auto mount
+        framework.api.utils.mask_function_sensitive_data(runtime, self._auth_info)
+
+        # ensure the runtime has a project before we enrich it with the project's spec
+        runtime.metadata.project = project_name or runtime.metadata.project
+        if not runtime.metadata.project:
+            raise mlrun.errors.MLRunMissingProjectError("Runtime must have a project")
+        project = runtime._get_db().get_project(runtime.metadata.project)
+        # this is mainly for tests with nop db
+        # in normal use cases if no project is found we will get an error
+        if project:
+            if not isinstance(project, mlrun.projects.project.MlrunProject):
+                project = mlrun.projects.project.MlrunProject.from_dict(project.dict())
+            # there is no need to auto mount here as it was already done in the full spec enrichment with the auth info
+            mlrun.projects.pipelines.enrich_function_object(
+                project, runtime, copy_function=False, try_auto_mount=False
+            )
+
+        if (
+            not runtime.spec.image
+            and not runtime.requires_build()
+            and runtime.kind in mlrun.mlconf.function_defaults.image_by_kind.to_dict()
+            and not runtime.skip_image_enrichment()
+        ):
+            runtime.spec.image = mlrun.mlconf.function_defaults.image_by_kind.to_dict()[
+                runtime.kind
+            ]
+
+        serving_spec = getattr(runtime, "serving_spec", None)
+        if serving_spec and isinstance(runtime, (KubejobRuntime, RemoteRuntime)):
+            serving_spec_volume = self._configure_serving_spec(
+                client_version=client_version,
+                function=runtime,
+                project=project.name,
+                serving_spec=serving_spec,
+            )
+            if serving_spec_volume:
+                runtime.spec.volumes = runtime.spec.volumes + [
+                    serving_spec_volume["volume"]
+                ]
+                runtime.spec.volume_mounts = runtime.spec.volume_mounts + [
+                    serving_spec_volume["volumeMount"]
+                ]
+
     def _enrich_run(
         self,
         runtime: "mlrun.runtimes.base.BaseRuntime",
@@ -422,75 +492,45 @@ class ServerSideLauncher(launcher.BaseLauncher):
                 function.spec.env["SERVING_SPEC_ENV"] = serving_spec
         return serving_spec_volume
 
-    def enrich_runtime(
-        self,
-        runtime: "mlrun.runtimes.base.BaseRuntime",
-        project_name: Optional[str] = "",
-        full: bool = True,
-        client_version: str = "",
-    ):
+    @staticmethod
+    def _should_skip_run(run: mlrun.run.RunObject) -> bool:
         """
-        Enrich the runtime object with the project spec and metadata.
-        This is done only on the server side, since it's the source of truth for the project, and we want to keep the
-        client side enrichment as minimal as possible.
-        :param runtime:         the runtime object to enrich
-        :param project_name:    the project name of the project to enrich the runtime with
-        :param full:            whether to enrich the runtime with the project's full spec (before run)
-                                e.g. mount, service account, etc.
-        :param client_version:  MLRun client version
+        Determine whether a retried run should be skipped based on its state.
+        A run should be skipped if it is in 'pending_retry' state and was either aborted or deleted after being
+        scheduled for retry.
         """
+        if run.status.state != mlrun.common.runtimes.constants.RunStates.pending_retry:
+            return False
 
-        # if auth given in request ensure the function pod will have these auth env vars set, otherwise the job won't
-        # be able to communicate with the api
-        framework.api.utils.ensure_function_has_auth_set(
-            runtime, self._auth_info, allow_empty_access_key=not full
-        )
-
-        if full:
-            self._enrich_full_spec(runtime)
-        # mask sensitive data after full spec enrichment in case auth was enriched by auto mount
-        framework.api.utils.mask_function_sensitive_data(runtime, self._auth_info)
-
-        # ensure the runtime has a project before we enrich it with the project's spec
-        runtime.metadata.project = project_name or runtime.metadata.project
-        if not runtime.metadata.project:
-            raise mlrun.errors.MLRunMissingProjectError("Runtime must have a project")
-        project = runtime._get_db().get_project(runtime.metadata.project)
-        # this is mainly for tests with nop db
-        # in normal use cases if no project is found we will get an error
-        if project:
-            if not isinstance(project, mlrun.projects.project.MlrunProject):
-                project = mlrun.projects.project.MlrunProject.from_dict(project.dict())
-            # there is no need to auto mount here as it was already done in the full spec enrichment with the auth info
-            mlrun.projects.pipelines.enrich_function_object(
-                project, runtime, copy_function=False, try_auto_mount=False
+        # fetch the run from the db to check if it was deleted after the retry attempt
+        db = framework.utils.singletons.db.get_db()
+        try:
+            db_run = framework.db.session.run_function_with_new_db_session(
+                db.read_run,
+                uid=run.metadata.uid,
+                project=run.metadata.project,
             )
+        except mlrun.errors.MLRunNotFoundError:
+            mlrun.utils.logger.info(
+                "Skipping retry for run - run was deleted",
+                uid=run.metadata.uid,
+                project=run.metadata.project,
+            )
+            return True
 
+        # check if it was aborted after the retry attempt
         if (
-            not runtime.spec.image
-            and not runtime.requires_build()
-            and runtime.kind in mlrun.mlconf.function_defaults.image_by_kind.to_dict()
-            and not runtime.skip_image_enrichment()
+            db_run.get("status", {}).get("state")
+            == mlrun.common.runtimes.constants.RunStates.aborted
         ):
-            runtime.spec.image = mlrun.mlconf.function_defaults.image_by_kind.to_dict()[
-                runtime.kind
-            ]
-
-        serving_spec = getattr(runtime, "serving_spec", None)
-        if serving_spec and isinstance(runtime, (KubejobRuntime, RemoteRuntime)):
-            serving_spec_volume = self._configure_serving_spec(
-                client_version=client_version,
-                function=runtime,
-                project=project.name,
-                serving_spec=serving_spec,
+            mlrun.utils.logger.info(
+                "Skipping retry for run - run was aborted",
+                uid=run.metadata.uid,
+                project=run.metadata.project,
             )
-            if serving_spec_volume:
-                runtime.spec.volumes = runtime.spec.volumes + [
-                    serving_spec_volume["volume"]
-                ]
-                runtime.spec.volume_mounts = runtime.spec.volume_mounts + [
-                    serving_spec_volume["volumeMount"]
-                ]
+            return True
+
+        return False
 
     def _enrich_full_spec(
         self,

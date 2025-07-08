@@ -45,8 +45,7 @@ project.set_secrets(secrets=secrets, provider="kubernetes")
 
 # Create and run the MLRun job
 function = mlrun.set_function(
-    func="<path to function>"
-    name="secret_func",
+    func="<path to function>" "secret_func",
     handler="test_function",
     kind="job",
     image="mlrun/mlrun",
@@ -85,7 +84,7 @@ project = mlrun.get_or_create_project("myproj", "./")
 
 function = mlrun.set_function(
     func="<path to function>",
-    name="secret_func",
+    "secret_func",
     handler="test_function",
     kind="job",
     image="mlrun/mlrun",
@@ -335,7 +334,7 @@ to an MLRun job:
 project = mlrun.get_or_create_project("myproj", "./")
 
 function = mlrun.set_function(
-    name="secret_func",
+    "secret_func",
     handler="test_function",
     ...
 )

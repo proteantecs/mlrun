@@ -501,10 +501,15 @@ class BaseStep(ModelObj):
     def verify_model_runner_step(
         self,
         step: "ModelRunnerStep",
+        step_model_endpoints_names: Optional[list[str]] = None,
+        verify_shared_models: bool = True,
     ):
         """
         Verify ModelRunnerStep, can be part of Flow graph and models can not repeat in graph.
-        :param step: ModelRunnerStep to verify
+        :param step:                        ModelRunnerStep to verify
+        :param step_model_endpoints_names:  List of model endpoints names that are in the step.
+                                            if provided will ignore step models and verify only the models on list.
+        :param verify_shared_models:        If True, verify that shared models are defined in the graph.
         """
 
         if not isinstance(step, ModelRunnerStep):
@@ -516,7 +521,7 @@ class BaseStep(ModelObj):
             raise GraphError(
                 "ModelRunnerStep can be added to 'Flow' topology graph only"
             )
-        step_model_endpoints_names = list(
+        step_model_endpoints_names = step_model_endpoints_names or list(
             step.class_args.get(schemas.ModelRunnerStepData.MODELS, {}).keys()
         )
         # Get all model_endpoints names that are in both lists
@@ -530,8 +535,9 @@ class BaseStep(ModelObj):
                 f"The graph already contains the model endpoints named - {common_endpoints_names}."
             )
 
-        # Check if shared models are defined in the graph
-        self._verify_shared_models(root, step, step_model_endpoints_names)
+        if verify_shared_models:
+            # Check if shared models are defined in the graph
+            self._verify_shared_models(root, step, step_model_endpoints_names)
         # Update model endpoints names in the root step
         root.update_model_endpoints_names(step_model_endpoints_names)
 
@@ -569,7 +575,9 @@ class BaseStep(ModelObj):
                 llm_artifact, _ = mlrun.store_manager.get_store_artifact(
                     model_artifact_uri
                 )
-                model_artifact_uri = llm_artifact.spec.parent_uri
+                model_artifact_uri = mlrun.utils.remove_tag_from_artifact_uri(
+                    llm_artifact.spec.parent_uri
+                )
             actual_shared_name = root.get_shared_model_name_by_artifact_uri(
                 model_artifact_uri
             )
@@ -1598,7 +1606,7 @@ class ModelRunnerStep(MonitoredStep):
         ):
             try:
                 model_artifact, _ = mlrun.store_manager.get_store_artifact(
-                    model_artifact
+                    mlrun.utils.remove_tag_from_artifact_uri(model_artifact)
                 )
             except mlrun.errors.MLRunNotFoundError:
                 raise mlrun.errors.MLRunInvalidArgumentError("Artifact not found.")
@@ -1609,6 +1617,11 @@ class ModelRunnerStep(MonitoredStep):
             model_artifact.uri
             if isinstance(model_artifact, mlrun.artifacts.Artifact)
             else model_artifact
+        )
+        model_artifact = (
+            mlrun.utils.remove_tag_from_artifact_uri(model_artifact)
+            if model_artifact
+            else None
         )
         model_parameters["artifact_uri"] = model_parameters.get(
             "artifact_uri", model_artifact
@@ -1624,6 +1637,11 @@ class ModelRunnerStep(MonitoredStep):
         if endpoint_name in models and not override:
             raise mlrun.errors.MLRunInvalidArgumentError(
                 f"Model with name {endpoint_name} already exists in this ModelRunnerStep."
+            )
+        root = self._extract_root_step()
+        if isinstance(root, RootFlowStep):
+            self.verify_model_runner_step(
+                self, [endpoint_name], verify_shared_models=False
             )
         ParallelExecutionMechanisms.validate(execution_mechanism)
         self.class_args[schemas.ModelRunnerStepData.MODEL_TO_EXECUTION_MECHANISM] = (
@@ -2492,7 +2510,7 @@ class RootFlowStep(FlowStep):
         name: str,
         model_class: Union[str, Model],
         execution_mechanism: Union[str, ParallelExecutionMechanisms],
-        model_artifact: Optional[Union[str, ModelArtifact]],
+        model_artifact: Union[str, ModelArtifact],
         override: bool = False,
         **model_parameters,
     ) -> None:
@@ -2544,6 +2562,7 @@ class RootFlowStep(FlowStep):
             if isinstance(model_artifact, mlrun.artifacts.Artifact)
             else model_artifact
         )
+        model_artifact = mlrun.utils.remove_tag_from_artifact_uri(model_artifact)
         model_parameters["artifact_uri"] = model_parameters.get(
             "artifact_uri", model_artifact
         )
@@ -2931,7 +2950,7 @@ def params_to_step(
         step = QueueStep(name, **class_args)
 
     elif class_name and hasattr(class_name, "to_dict"):
-        struct = class_name.to_dict()
+        struct = deepcopy(class_name.to_dict())
         kind = struct.get("kind", StepKinds.task)
         name = (
             name

@@ -25,9 +25,10 @@ import mlrun.launcher.base
 import mlrun.launcher.factory
 from mlrun.config import Config
 
-import framework.utils.clients.iguazio
+import framework.utils.clients.iguazio.v3
 import services.api.launcher
 import services.api.tests.unit.api.utils
+from framework.utils.auth.verifier import AuthenticationMode
 
 
 @pytest.mark.parametrize(
@@ -53,9 +54,9 @@ def test_create_server_side_launcher(is_remote, local, expectation):
 def test_enrich_runtime_with_auth_info(
     monkeypatch, k8s_secrets_mock, client: TestClient
 ):
-    mlrun.mlconf.httpdb.authentication.mode = "iguazio"
+    mlrun.mlconf.httpdb.authentication.mode = AuthenticationMode.IGUAZIO
     monkeypatch.setattr(
-        framework.utils.clients.iguazio,
+        framework.utils.clients.iguazio.v3,
         "AsyncClient",
         lambda *args, **kwargs: unittest.mock.AsyncMock(),
     )

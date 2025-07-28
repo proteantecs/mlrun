@@ -1239,6 +1239,19 @@ class Config:
         """
         return self.is_running_on_iguazio()
 
+    @staticmethod
+    def get_run_retry_staleness_threshold_timedelta() -> timedelta:
+        """
+        Get the staleness threshold in timedelta for run retries.
+        This is used to determine if a run is stale and should be retried.
+
+        :return: The staleness threshold in timedelta.
+        """
+        staleness_threshold = int(
+            mlrun.mlconf.monitoring.runs.retry.staleness_threshold
+        )
+        return timedelta(minutes=staleness_threshold)
+
     def to_dict(self):
         return copy.deepcopy(self._cfg)
 

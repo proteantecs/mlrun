@@ -17,39 +17,45 @@ ARG MLRUN_UV_IMAGE=ghcr.io/astral-sh/uv:latest
 
 FROM ${MLRUN_UV_IMAGE} AS uv-image
 
-FROM gcr.io/iguazio/python:${MLRUN_PYTHON_VERSION}-slim
-
+FROM cgr.dev/chainguard/wolfi-base AS base
 
 ARG UID=1000
-# this creates both user and group with the same id
-RUN useradd -u $UID mlrun
 
-# Update OS packages:
-RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get -y upgrade && \
-    rm -rf /var/lib/apt/lists/*
+# need to be redeclared since used in the from
+ARG MLRUN_PYTHON_VERSION=3.11
+
+# Add Python and other required system packages
+RUN apk add --no-cache \
+    python-${MLRUN_PYTHON_VERSION} \
+    py${MLRUN_PYTHON_VERSION}-pip \
+    py${MLRUN_PYTHON_VERSION}-setuptools \
+    py${MLRUN_PYTHON_VERSION}-wheel \
+    gcc \
+    git \
+    procps \
+    sqlite \
+    vim \
+    mariadb-client \
+    curl \
+    ca-certificates \
+    tini \
+    shadow \
+    libffi-dev \
+    openssl-dev \
+    linux-headers
+
+# Create mlrun user and group
+RUN useradd -u $UID mlrun
 
 LABEL maintainer="yaronh@iguazio.com"
 LABEL org="iguazio.com"
 
-RUN apt-get update && apt-get install --no-install-recommends -y \
-  tini \
-  gcc \
-  git-core \
-  procps \
-  sqlite3 \
-  vim \
-  mariadb-client \
-  curl \
-  ca-certificates \
- && rm -rf /var/lib/apt/lists/*
-
-ENV UV_SYSTEM_PYTHON=true UV_LINK_MODE=copy UV_COMPILE_BYTECODE=1
+ENV UV_SYSTEM_PYTHON=true \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
 
 WORKDIR /mlrun
 
-# need to be redeclared since used in the from
-ARG MLRUN_PYTHON_VERSION=3.11
 RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=dockerfiles/mlrun-api/locked-requirements.txt,target=locked-requirements.txt \
@@ -67,12 +73,13 @@ RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     --mount=type=cache,target=/root/.cache/uv \
     uv pip install .[complete-api,kfp18] --python-version ${MLRUN_PYTHON_VERSION}
 
-# Remove server related files that are not needed in the base image
-# Remove ensurepip folders from both conda and system python
-# Remove pip is not needed anymore
+# Cleanup
 RUN rm -rf ./server/go \
-    && python -m pip uninstall pip -y \
-    && rm -rf /usr/local/lib/python${MLRUN_PYTHON_VERSION}/ensurepip
+    && python${MLRUN_PYTHON_VERSION} -m pip uninstall pip -y \
+    && rm -rf /usr/lib/python${MLRUN_PYTHON_VERSION}/ensurepip || true
+
+RUN rm /usr/share/python-wheels/pip*.whl
+RUN rm -rf /var/cache/apk/* && rm -rf /lib/apk/db/*
 
 VOLUME /mlrun/db
 ENV PYTHONPATH=/mlrun/server/py
@@ -84,13 +91,10 @@ ENV MLRUN_HTTPDB__HTTP_CONNECTION_TIMEOUT_KEEP_ALIVE=11
 ENV MLRUN_IS_API_SERVER=true
 ENV MLRUN_IGNORE_ENV_FILE=true
 
-# env vars for uvicorn (https://www.uvicorn.org/settings)
+# Uvicorn settings
 ENV UVICORN_PORT=${MLRUN_HTTPDB__PORT}
 ENV UVICORN_TIMEOUT_KEEP_ALIVE=${MLRUN_HTTPDB__HTTP_CONNECTION_TIMEOUT_KEEP_ALIVE}
 ENV MLRUN_SERVICES__SERVICE_NAME=api
 
-# use tini as entrypoint to allow signal handling
-# and avoid zombie processes
 ENTRYPOINT ["tini", "--"]
-
 CMD ["bash", "./dockerfiles/mlrun-api/start_api.sh"]

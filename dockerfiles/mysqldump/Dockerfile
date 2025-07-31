@@ -30,7 +30,7 @@ RUN mkdir /build/build-dir
 
 WORKDIR /build/build-dir
 
-# Configure cmake build
+# Configure cmake build with explicit install prefix
 RUN cmake ../mysql-server \
     -DDOWNLOAD_BOOST=1 \
     -DWITH_BOOST=boost \
@@ -38,6 +38,7 @@ RUN cmake ../mysql-server \
     -DWITHOUT_SERVER=ON \
     -DWITH_EDITLINE=bundled \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_INSTALL_PREFIX=/usr/local/mysql \
     -DCMAKE_C_FLAGS="-O3" \
     -DCMAKE_CXX_FLAGS="-O3"
 
@@ -45,14 +46,28 @@ RUN cmake ../mysql-server \
 RUN make -j$(nproc) client
 RUN make -j$(nproc) install
 
+# Find and copy mysqldump to a known location for easier copying
+RUN MYSQLDUMP_PATH=$(find /usr/local -name "mysqldump" -type f 2>/dev/null | head -1) && \
+    if [ -z "$MYSQLDUMP_PATH" ]; then \
+        echo "ERROR: mysqldump binary not found!" && exit 1; \
+    else \
+        echo "Found mysqldump at: $MYSQLDUMP_PATH" && \
+        mkdir -p /tmp/mysql-bin && \
+        cp "$MYSQLDUMP_PATH" /tmp/mysql-bin/mysqldump && \
+        chmod +x /tmp/mysql-bin/mysqldump; \
+    fi
+
 # ---- Stage 2: Final minimal runtime image ----
 FROM cgr.dev/chainguard/wolfi-base:latest
 
 # Install runtime requirements and bash
 RUN apk add --no-cache bash
 
-# Copy only the stripped mysqldump binary
-COPY --from=builder /usr/local/mysql/bin/mysqldump /usr/local/bin/
+# Create the user for mlrun
+RUN adduser -u 1000 -D mlrun
+
+# Copy the mysqldump binary from the known temporary location
+COPY --from=builder /tmp/mysql-bin/mysqldump /usr/local/bin/mysqldump
 
 # Ensure executable permissions
 RUN chmod +x /usr/local/bin/mysqldump

@@ -39,7 +39,7 @@ jobs:
       - name: Build mysqldump Docker image
         id: build
         run: |
-          docker build -f dockerfiles/mysqldump/Dockerfile -t proteantecs/mlrun-mysqldump:1.9.2 . > build.log 2>&1 || (cat build.log; exit 1)
+          docker build -f dockerfiles/mysqldump/Dockerfile -t proteantecs/mlrun-mysqldump:1.9.2.1 . > build.log 2>&1 || (cat build.log; exit 1)
 
       - name: Push mysqldump Docker image
         if: success()

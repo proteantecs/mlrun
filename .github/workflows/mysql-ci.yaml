@@ -1,4 +1,4 @@
-name: CI
+name: MySQL CI
 
 on:
   pull_request:
@@ -15,8 +15,8 @@ jobs:
   build-docker:
     name: Build Docker
     runs-on: ubuntu-latest
-    # Only run this job if the branch name does NOT contain 'mysql'
-    if: ${{ !contains(github.head_ref, 'mysql') }}
+    # Only run this job if the branch name contains 'mysql'
+    if: contains(github.head_ref, 'mysql')
     outputs:
       igz-controls-import-error: ${{ steps.check-error.outputs.igz-controls-import-error }}
 
@@ -35,16 +35,6 @@ jobs:
         with:
           username: ciprotean
           password: ${{ secrets.CIPROTEAN_DOCKER_PASS }}
-
-      - name: Build mysqldump Docker image
-        id: build
-        run: |
-          docker build -f dockerfiles/mysqldump/Dockerfile -t proteantecs/mlrun-mysqldump:1.9.2 . > build.log 2>&1 || (cat build.log; exit 1)
-
-      - name: Push mysqldump Docker image
-        if: success()
-        run: |
-          docker push proteantecs/mlrun-mysqldump:1.9.2
 
       - name: Build Docker image
         id: build

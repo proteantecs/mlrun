@@ -36,12 +36,12 @@ jobs:
           username: ciprotean
           password: ${{ secrets.CIPROTEAN_DOCKER_PASS }}
 
-      - name: Build Docker image
+      - name: Build mysqldump Docker image
         id: build
         run: |
-          docker build -f dockerfiles/mlrun-api/Dockerfile -t proteantecs/mlrun-api:1.9.2-${{ github.sha }} . > build.log 2>&1 || (cat build.log; exit 1)
+          docker build -f dockerfiles/mysqldump/Dockerfile -t proteantecs/mlrun-mysqldump:1.9.2 . > build.log 2>&1 || (cat build.log; exit 1)
 
-      - name: Push Docker image
+      - name: Push mysqldump Docker image
         if: success()
         run: |
-          docker push proteantecs/mlrun-api:1.9.2-${{ github.sha }}
+          docker push proteantecs/mlrun-mysqldump:1.9.2

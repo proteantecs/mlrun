@@ -37,7 +37,7 @@ jobs:
       - name: Build Docker image
         id: build
         run: |
-          docker build -t proteantecs/mlrun-api:1.9.2-${{ github.sha }} . > build.log 2>&1 || (cat build.log; exit 1)
+          docker build -f dockerfiles/mlrun-api/Dockerfile -t proteantecs/mlrun-api:1.9.2-${{ github.sha }} . > build.log 2>&1 || (cat build.log; exit 1)
 
       - name: Push Docker image
         if: success()

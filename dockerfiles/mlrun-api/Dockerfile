@@ -15,6 +15,54 @@
 ARG MLRUN_PYTHON_VERSION=3.11
 ARG MLRUN_UV_IMAGE=ghcr.io/astral-sh/uv:latest
 
+# ---- Stage 1: Build mysqldump from MySQL source ----
+FROM cgr.dev/chainguard/wolfi-base:latest AS builder
+
+# Install build dependencies only
+RUN apk add --no-cache \
+    build-base \
+    cmake \
+    ncurses-dev \
+    bison \
+    openssl-dev \
+    zlib-dev \
+    boost-dev \
+    curl-dev \
+    libedit-dev \
+    libtirpc-dev \
+    git \
+    bash \
+    make \
+    xz \
+    binutils
+
+# Set working directory
+WORKDIR /build
+
+# Shallow clone only needed branch and minimal history
+RUN git clone --branch mysql-8.0.42 --depth 1 https://github.com/mysql/mysql-server.git
+
+# Create build dir outside source
+RUN mkdir /build/build-dir
+
+WORKDIR /build/build-dir
+
+# Configure cmake build
+RUN cmake ../mysql-server \
+    -DDOWNLOAD_BOOST=1 \
+    -DWITH_BOOST=boost \
+    -DWITH_UNIT_TESTS=OFF \
+    -DWITHOUT_SERVER=ON \
+    -DWITH_EDITLINE=bundled \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS="-O3" \
+    -DCMAKE_CXX_FLAGS="-O3"
+
+# Build and install
+RUN make -j$(nproc) client
+RUN make -j$(nproc) install
+
+
 FROM ${MLRUN_UV_IMAGE} AS uv-image
 
 FROM cgr.dev/chainguard/wolfi-base AS base
@@ -42,10 +90,14 @@ RUN apk add --no-cache \
     shadow \
     libffi-dev \
     openssl-dev \
-    linux-headers
+    linux-headers \
+    bash
 
 # Create mlrun user and group
 RUN useradd -u $UID mlrun
+
+COPY --from=builder /usr/local/mysql/bin/mysqldump /usr/local/bin/
+RUN chmod +x /usr/local/bin/mysqldump
 
 LABEL maintainer="yaronh@iguazio.com"
 LABEL org="iguazio.com"
@@ -62,6 +114,8 @@ RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     uv pip sync --require-hashes locked-requirements.txt --python-version ${MLRUN_PYTHON_VERSION}
 
 COPY ./pipeline-adapters ./pipeline-adapters
+
+COPY ./dockerfiles/mlrun-api/start_api.sh ./dockerfiles/mlrun-api/start_api.sh
 
 RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     uv pip install ./pipeline-adapters/mlrun-pipelines-kfp-common --python-version ${MLRUN_PYTHON_VERSION} && \
@@ -81,6 +135,8 @@ RUN rm -rf ./server/go \
 
 RUN rm /usr/share/python-wheels/pip*.whl
 RUN rm -rf /var/cache/apk/* && rm -rf /lib/apk/db/*
+
+RUN chmod +x ./dockerfiles/mlrun-api/start_api.sh
 
 VOLUME /mlrun/db
 ENV PYTHONPATH=/mlrun/server/py

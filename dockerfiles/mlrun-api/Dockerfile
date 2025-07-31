@@ -15,6 +15,9 @@
 ARG MLRUN_PYTHON_VERSION=3.11
 ARG MLRUN_UV_IMAGE=ghcr.io/astral-sh/uv:latest
 
+FROM proteantecs/mlrun-mysqldump:1.9.2 AS builder
+
+
 FROM ${MLRUN_UV_IMAGE} AS uv-image
 
 FROM cgr.dev/chainguard/wolfi-base AS base
@@ -42,10 +45,14 @@ RUN apk add --no-cache \
     shadow \
     libffi-dev \
     openssl-dev \
-    linux-headers
+    linux-headers \
+    bash
 
 # Create mlrun user and group
 RUN useradd -u $UID mlrun
+
+COPY --from=builder /usr/local/mysql/bin/mysqldump /usr/local/bin/
+RUN chmod +x /usr/local/bin/mysqldump
 
 LABEL maintainer="yaronh@iguazio.com"
 LABEL org="iguazio.com"
@@ -62,6 +69,8 @@ RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     uv pip sync --require-hashes locked-requirements.txt --python-version ${MLRUN_PYTHON_VERSION}
 
 COPY ./pipeline-adapters ./pipeline-adapters
+
+COPY ./dockerfiles/mlrun-api/start_api.sh ./dockerfiles/mlrun-api/start_api.sh
 
 RUN --mount=from=uv-image,source=/uv,target=/bin/uv \
     uv pip install ./pipeline-adapters/mlrun-pipelines-kfp-common --python-version ${MLRUN_PYTHON_VERSION} && \
@@ -81,6 +90,8 @@ RUN rm -rf ./server/go \
 
 RUN rm /usr/share/python-wheels/pip*.whl
 RUN rm -rf /var/cache/apk/* && rm -rf /lib/apk/db/*
+
+RUN chmod +x ./dockerfiles/mlrun-api/start_api.sh
 
 VOLUME /mlrun/db
 ENV PYTHONPATH=/mlrun/server/py

@@ -51,7 +51,7 @@ RUN apk add --no-cache \
 # Create mlrun user and group
 RUN useradd -u $UID mlrun
 
-COPY --from=builder /usr/local/mysql/bin/mysqldump /usr/local/bin/
+COPY --from=builder /usr/local/bin/mysqldump /usr/local/bin/
 RUN chmod +x /usr/local/bin/mysqldump
 
 LABEL maintainer="yaronh@iguazio.com"

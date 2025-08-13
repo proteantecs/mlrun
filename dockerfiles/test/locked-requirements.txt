@@ -2429,9 +2429,9 @@ linkify-it-py==2.0.3 ; sys_platform != 'win32' \
     --hash=sha256:68cda27e162e9215c17d786649d1da0021a451bdc436ef9e0fa0ba5234b9b048 \
     --hash=sha256:6bcbc417b0ac14323382aef5c5192c0075bf8a9d6b41820a2b66371eac6b6d79
     # via markdown-it-py
-litestar==2.16.0 \
-    --hash=sha256:8a48557198556f01d3d70da3859a471aa56595a4a344362d9529ed65804e3ee4 \
-    --hash=sha256:f65c0d543bfec12b7433dff624322936f30bbdfb54ad3c5b7ef22ab2d092be2d
+litestar==2.17.0 \
+    --hash=sha256:0f50c3b7063417c338b32902f9eb40b81a7b14c9802edbff921a24aec3b0ea5b \
+    --hash=sha256:2e62f01f852195362d69e3305cccddaf6371f5ab0ced30a081a66fb85e1df532
     # via evidently
 litestar-htmx==0.5.0 \
     --hash=sha256:92833aa47e0d0e868d2a7dbfab75261f124f4b83d4f9ad12b57b9a68f86c50e6 \

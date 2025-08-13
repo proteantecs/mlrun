@@ -93,7 +93,7 @@ hack/*.env
 # Database and protobuf files
 db/mlrun.db
 server/py/framework/db/mlrun.db
-server/py/schemas/proto/*pb2*.py
+#server/py/schemas/proto/*pb2*.py
 
 # Temporary or backup files
 *.bak

@@ -39,9 +39,12 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
         gnupg2 \
         graphviz \
         make \
-        software-properties-common \
         libpq-dev \
         python3-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install software-properties-common if available (Ubuntu-specific, optional on Debian)
+RUN apt-get update && apt-get install --no-install-recommends -y software-properties-common || true \
     && rm -rf /var/lib/apt/lists/*
 
 # set initial git config

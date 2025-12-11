@@ -861,7 +861,7 @@ fonttools==4.61.0 \
     --hash=sha256:e6cd0d9051b8ddaf7385f99dd82ec2a058e2b46cf1f1961e68e1ff20fcbb61af \
     --hash=sha256:ec520a1f0c7758d7a858a00f090c1745f6cde6a7c5e76fb70ea4044a15f712e7
     # via
-    #   -r dockerfiles/mlrun-api/requirements.txt
+    #   -r extras-requirements.txt
     #   matplotlib
 fqdn==1.5.1 \
     --hash=sha256:105ed3677e767fb5ca086a0c1f4bb66ebc3c100be518f0e0d755d9eae164d89f \

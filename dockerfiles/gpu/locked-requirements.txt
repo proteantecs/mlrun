@@ -872,9 +872,9 @@ distributed==2023.12.1 ; python_full_version < '3.11' \
     #   dask-glm
     #   dask-kubernetes
     #   dask-ml
-distributed==2024.12.1 ; python_full_version >= '3.11' \
-    --hash=sha256:438aa3ae48bfac9c2bb2ad03f9d47899286f9cb3db8a627b3b8c0de9e26f53dd \
-    --hash=sha256:87e31abaa0ee3dc517b44fec4993d4b5d92257f926a8d2a12d52c005227154e7
+distributed==2026.1.1 ; python_full_version >= '3.11' \
+    --hash=sha256:3d2709a43912797df3c345af3bb333bbf1a386ec1e9e6a134e5f050521373dbd \
+    --hash=sha256:506759b1ed88e45e12ba65e2a429de9911862db55d27dd8bb293c6268430374e
     # via
     #   -r extras-requirements.txt
     #   dask

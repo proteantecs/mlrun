@@ -2699,9 +2699,9 @@ ml-dtypes==0.4.1 \
     # via
     #   keras
     #   tensorflow
-mlflow==2.22.1 \
-    --hash=sha256:b7d6cb294112115cb0031a554629a21647c38ba88d0fd7455e0ddead02b4bb28 \
-    --hash=sha256:d9702186ba15e4537bd49364adc6256f3ccc03b00b79fcef4e3fda231eaf98b8
+mlflow==3.5.0 \
+    --hash=sha256:138cd211eac787d0db80523f8f2456c562c6dd82b3eb912a2a42d96f3a9c4fa3 \
+    --hash=sha256:ea06c79d933c30fe863cb7c809818c36f356e58a3f4007ab1f6c6c3b752c2b3e
     # via -r extras-requirements.txt
 mlflow-skinny==2.22.1 \
     --hash=sha256:3b3f9a17a4b9e60c7683b3458909aff15f3c6f5dc898a6cec13a6efb939e7e79 \
